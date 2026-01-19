@@ -1,0 +1,169 @@
+"use client";
+
+import { use, useEffect, useMemo, useState } from "react";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
+import { Grid3x3, type ProductUI } from "@/components/Grid3x3";
+import { CartDrawer, type CartItem } from "@/components/CartDrawer";
+import { useRouter } from "next/navigation";
+
+const PER_PAGE = 9;
+
+export default function CatalogClientPage(props: { params: Promise<{ catalogId: string }> }) {
+  const { catalogId } = use(props.params);
+  const router = useRouter();
+
+  const [products, setProducts] = useState<ProductUI[]>([]);
+  const [page, setPage] = useState(1);
+  const [cartOpen, setCartOpen] = useState(false);
+
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartReady, setCartReady] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`cart:${catalogId}`);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setCart(parsed);
+    } catch {
+      setCart([]);
+    } finally {
+      setCartReady(true);
+    }
+  }, [catalogId]);
+
+  useEffect(() => {
+    if (!cartReady) return;
+    localStorage.setItem(`cart:${catalogId}`, JSON.stringify(cart));
+  }, [cart, catalogId, cartReady]);
+
+  async function load() {
+    const { data, error } = await supabaseBrowser
+      .from("products")
+      .select("id, progressive_number, box_number, image_path, is_sold, is_published, price_eur")
+      .eq("catalog_id", catalogId)
+      .eq("is_published", true) // ✅ clienti vedono SOLO pubblicati
+      .order("progressive_number", { ascending: true });
+
+    if (error) return;
+
+    const base = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const mapped: ProductUI[] = (data || []).map((p: any) => ({
+      id: p.id,
+      progressive_number: p.progressive_number,
+      box_number: p.box_number,
+      image_url: `${base}/storage/v1/object/public/catalog-images/${p.image_path}`,
+      is_sold: p.is_sold,
+      price_eur: p.price_eur,
+    }));
+
+    setProducts(mapped);
+  }
+
+  useEffect(() => {
+    load();
+
+    // realtime: se cambia is_sold o price/publish, aggiorna
+    const ch = supabaseBrowser
+      .channel(`products-${catalogId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "products", filter: `catalog_id=eq.${catalogId}` },
+        () => {
+          // più semplice: ricarico lista (visto che filtriamo su is_published)
+          load();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabaseBrowser.removeChannel(ch);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogId]);
+
+  const totalPages = Math.max(1, Math.ceil(products.length / PER_PAGE));
+  const view = useMemo(() => {
+    const start = (page - 1) * PER_PAGE;
+    return products.slice(start, start + PER_PAGE);
+  }, [products, page]);
+
+  function addToCart(p: ProductUI) {
+    if (p.is_sold) return;
+
+    setCart((prev) => {
+      const idx = prev.findIndex((x) => x.product.id === p.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], qty: copy[idx].qty + 1 };
+        return copy;
+      }
+      return [...prev, { product: p, qty: 1 }];
+    });
+    setCartOpen(true);
+  }
+
+  function setQty(productId: string, qty: number) {
+    setCart((prev) => prev.map((x) => (x.product.id === productId ? { ...x, qty } : x)));
+  }
+
+  function remove(productId: string) {
+    setCart((prev) => prev.filter((x) => x.product.id !== productId));
+  }
+
+  const cartCount = cart.reduce((a, b) => a + b.qty, 0);
+
+  return (
+    <div className="mx-auto max-w-5xl p-4">
+      <div className="mb-6 flex justify-center">
+        <img src="/logo.jpg" alt="Logo azienda" className="h-20 w-auto" />
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xl font-bold">Catalogo</div>
+
+        <button
+          className="rounded-md bg-black px-3 py-2 text-white disabled:opacity-50"
+          disabled={!cartReady || cartCount === 0}
+          onClick={() => setCartOpen(true)}
+        >
+          Carrello ({cartReady ? cartCount : 0})
+        </button>
+      </div>
+
+      <div className="mt-4">
+        <Grid3x3 products={view} onAdd={addToCart} />
+      </div>
+
+      <div className="mt-4 flex items-center justify-between">
+        <button
+          className="rounded-md border px-3 py-1 disabled:opacity-50"
+          disabled={page <= 1}
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+        >
+          ←
+        </button>
+
+        <div className="text-sm">
+          Pagina {page} / {totalPages}
+        </div>
+
+        <button
+          className="rounded-md border px-3 py-1 disabled:opacity-50"
+          disabled={page >= totalPages}
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+        >
+          →
+        </button>
+      </div>
+
+      <CartDrawer
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        items={cart}
+        setQty={setQty}
+        remove={remove}
+        onCheckout={() => router.push(`/checkout/${catalogId}`)}
+      />
+    </div>
+  );
+}
