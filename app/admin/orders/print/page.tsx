@@ -4,6 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
+const base = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+
+const imgUrl = (path?: string | null) => {
+  if (!path) return "";
+  return `${base}/storage/v1/object/public/catalog-images/${path}`;
+};
+
 type Order = {
   id: string;
   customer_name: string;
@@ -249,7 +256,7 @@ export default function OrdersPrintPage() {
                     return (
                       <div key={idx} className="flex items-center justify-between gap-2 text-sm">
                         <div>
-                          • Cassa {p.box_number} (Prog {p.progressive_number}) × {q}
+                          • Cassa {p.box_number} × {q}
                         </div>
                         <div className="font-semibold">{eur(p.price_eur)}</div>
                       </div>
@@ -270,7 +277,7 @@ export default function OrdersPrintPage() {
             <div key={p.productId} className="rounded-2xl border bg-white p-4">
               <div className="flex items-baseline justify-between gap-2">
                 <div className="text-lg font-bold">
-                  Cassa {p.box} — Prog {p.prog}
+                  Cassa {p.box}
                 </div>
                 <div className="text-sm font-semibold">{eur(p.price)}</div>
               </div>
