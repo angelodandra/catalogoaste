@@ -36,6 +36,8 @@ export default function AdminOrdersPage() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
 
+  const [customerByPhone, setCustomerByPhone] = useState<Record<string, { company?: string | null }>>({});
+
   // ✅ Pulizia ordini
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -60,7 +62,29 @@ export default function AdminOrdersPage() {
       }
 
       setOrders((data || []) as any);
-      setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
+      
+      try {
+        const phones = Array.from(new Set((data || []).map((o: any) => String(o.customer_phone || "").trim()).filter(Boolean)));
+        if (!phones.length) {
+          setCustomerByPhone({});
+        } else {
+          const { data: custs, error: cErr } = await supabaseBrowser
+            .from("customers")
+            .select("phone, company")
+            .in("phone", phones);
+
+          if (cErr) throw cErr;
+
+          const map: Record<string, { company?: string | null }> = {};
+          for (const c of (custs || []) as any[]) {
+            map[String(c.phone).trim()] = { company: c.company ?? null };
+          }
+          setCustomerByPhone(map);
+        }
+      } catch {
+        setCustomerByPhone({});
+      }
+setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
     } catch (e: any) {
       setMsg(e?.message ?? "Errore rete");
     } finally {
@@ -418,7 +442,7 @@ export default function AdminOrdersPage() {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="text-base font-bold">
-                  {o.customer_name} — {o.customer_phone}
+                  {o.customer_name} {customerByPhone[o.customer_phone]?.company ? `(${customerByPhone[o.customer_phone]?.company})` : ""} — {o.customer_phone}
                 </div>
                 <div className="mt-1 text-xs text-gray-600">
                   {new Date(o.created_at).toLocaleString("it-IT")} • Stato: <b>{o.status}</b> • WA: <b>{o.wa_status ?? "—"}</b> • Ordine:{" "}

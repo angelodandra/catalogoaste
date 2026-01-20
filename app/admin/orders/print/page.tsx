@@ -1,12 +1,26 @@
 "use client";
 
-import { supabaseServer } from "@/lib/supabaseServer";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
-export const runtime = "nodejs";
+type Order = {
+  id: string;
+  customer_name: string;
+  customer_phone: string;
+  created_at: string;
+};
 
-function nowIT() {
-  return new Date().toLocaleString("it-IT");
-}
+type OrderItemRow = {
+  order_id: string;
+  qty: number;
+  products: {
+    id: string;
+    progressive_number: number;
+    box_number: string;
+    price_eur: number | null;
+  } | null;
+};
 
 function eur(n: number | null | undefined) {
   if (n === null || n === undefined) return "—";
@@ -15,234 +29,265 @@ function eur(n: number | null | undefined) {
   return `€ ${v.toFixed(2)}`;
 }
 
-type SearchParams = {
-  mode?: string;
-  from?: string;
-  to?: string;
-  type?: string; // byOrder | byProduct
-};
+export default function OrdersPrintPage() {
+  const router = useRouter();
+  const sp = useSearchParams();
 
-export default async function PrintOrdersPage(props: { searchParams: Promise<SearchParams> }) {
-  const sp = await props.searchParams;
+  // mode: customer | product
+  const mode = (sp.get("mode") || "customer").toLowerCase();
+  const from = (sp.get("from") || "").trim(); // YYYY-MM-DD
+  const to = (sp.get("to") || "").trim();     // YYYY-MM-DD
 
-  const mode = sp.mode === "range" ? "range" : "all";
-  const type = sp.type === "byProduct" ? "byProduct" : "byOrder";
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [items, setItems] = useState<OrderItemRow[]>([]);
+  const [customerByPhone, setCustomerByPhone] = useState<Record<string, { company?: string | null }>>({});
 
-  const from = (sp.from || "").trim();
-  const to = (sp.to || "").trim();
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      setErr("");
 
-  const supabase = supabaseServer();
+      try {
+        let q = supabaseBrowser
+          .from("orders")
+          .select("id,customer_name,customer_phone,created_at")
+          .order("created_at", { ascending: true })
+          .limit(500);
 
-  let q = supabase
-    .from("orders")
-    .select(
-      "id,created_at,customer_name,customer_phone,status, order_items(qty, products(id,box_number,progressive_number,price_eur))"
-    )
-    .order("created_at", { ascending: false });
+        // filtro date (solo se entrambe presenti)
+        if (from && to) {
+          q = q.gte("created_at", `${from}T00:00:00Z`).lte("created_at", `${to}T23:59:59Z`);
+        }
 
-  if (mode === "range") {
-    const fromIso = `${from}T00:00:00Z`;
-    const toIso = `${to}T23:59:59Z`;
-    q = q.gte("created_at", fromIso).lte("created_at", toIso);
-  }
+        const { data: oData, error: oErr } = await q;
+        if (oErr) throw oErr;
 
-  const { data: orders, error } = await q;
-  if (error) {
+        const o = (oData || []) as any as Order[];
+        setOrders(o);
+
+        const orderIds = o.map((x) => x.id);
+        if (!orderIds.length) {
+          setItems([]);
+          setCustomerByPhone({});
+          return;
+        }
+
+        const { data: iData, error: iErr } = await supabaseBrowser
+          .from("order_items")
+          .select("order_id,qty,products(id,progressive_number,box_number,price_eur)")
+          .in("order_id", orderIds);
+
+        if (iErr) throw iErr;
+        const it = (iData || []) as any as OrderItemRow[];
+        setItems(it);
+
+        // lookup aziende per telefono
+        try {
+          const phones = Array.from(
+            new Set(o.map((x) => String(x.customer_phone || "").trim()).filter(Boolean))
+          );
+
+          if (!phones.length) {
+            setCustomerByPhone({});
+          } else {
+            const { data: custs, error: cErr } = await supabaseBrowser
+              .from("customers")
+              .select("phone, company")
+              .in("phone", phones);
+
+            if (cErr) throw cErr;
+
+            const map: Record<string, { company?: string | null }> = {};
+            for (const c of (custs || []) as any[]) {
+              map[String(c.phone).trim()] = { company: c.company ?? null };
+            }
+            setCustomerByPhone(map);
+          }
+        } catch {
+          setCustomerByPhone({});
+        }
+      } catch (e: any) {
+        setErr(e?.message ?? "Errore caricando dati stampa");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [from, to]);
+
+  const itemsByOrder = useMemo(() => {
+    const m: Record<string, OrderItemRow[]> = {};
+    for (const r of items) {
+      if (!m[r.order_id]) m[r.order_id] = [];
+      m[r.order_id].push(r);
+    }
+    return m;
+  }, [items]);
+
+  const productView = useMemo(() => {
+    // productId -> { box, prog, price, customers: [{name, company, phone, qty}] }
+    const pm: Record<
+      string,
+      {
+        productId: string;
+        box: string;
+        prog: number | string;
+        price: number | null;
+        customers: { name: string; company?: string | null; phone: string; qty: number }[];
+      }
+    > = {};
+
+    const orderById: Record<string, Order> = {};
+    for (const o of orders) orderById[o.id] = o;
+
+    for (const row of items) {
+      const p = row.products;
+      if (!p) continue;
+
+      const ord = orderById[row.order_id];
+      if (!ord) continue;
+
+      const phone = String(ord.customer_phone || "").trim();
+      const company = customerByPhone[phone]?.company ?? null;
+
+      if (!pm[p.id]) {
+        pm[p.id] = {
+          productId: p.id,
+          box: p.box_number ?? "?",
+          prog: (p.progressive_number ?? "?") as any,
+          price: p.price_eur ?? null,
+          customers: [],
+        };
+      }
+
+      pm[p.id].customers.push({
+        name: ord.customer_name,
+        company,
+        phone,
+        qty: Number(row.qty ?? 1),
+      });
+    }
+
+    const arr = Object.values(pm);
+    arr.sort((a, b) => Number(a.prog) - Number(b.prog));
+    return arr;
+  }, [orders, items, customerByPhone]);
+
+  const title = useMemo(() => {
+    const range = from && to ? `(${from} → ${to})` : "(tutti)";
+    return mode === "product" ? `Stampa ordini per prodotto ${range}` : `Stampa ordini per cliente ${range}`;
+  }, [mode, from, to]);
+
+  if (loading) {
     return (
-      <div style={{ padding: 20, fontFamily: "system-ui" }}>
-        <h1>Errore</h1>
-        <pre>{error.message}</pre>
+      <div className="mx-auto max-w-4xl p-6">
+        <div className="text-lg font-bold">Carico stampa…</div>
       </div>
     );
   }
 
-  const list = (orders || []).filter((o: any) => o?.status !== "failed");
-
-  const printTitle =
-    type === "byOrder" ? "Stampa ordini — Cliente / Casse / Prezzo" : "Stampa ordini — Prodotto / Clienti";
-
-  const filterLabel =
-    mode === "all" ? "Tutti gli ordini" : `Dal ${from} al ${to}`;
-
-  const baseStyle: React.CSSProperties = {
-    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial",
-    color: "#111",
-  };
-
-  return (
-    <html lang="it">
-      <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>{printTitle}</title>
-        <style>{`
-          @media print {
-            .no-print { display: none !important; }
-            body { margin: 0; }
-          }
-          table { border-collapse: collapse; width: 100%; }
-          th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
-          th { background: #f5f5f5; text-align: left; }
-          .h1 { font-size: 20px; font-weight: 800; margin: 0; }
-          .meta { font-size: 12px; color: #444; margin-top: 6px; }
-          .wrap { max-width: 980px; margin: 0 auto; padding: 18px; }
-          .card { border: 1px solid #e5e5e5; border-radius: 12px; padding: 12px; margin-top: 12px; }
-          .row { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
-          .btn { border: 1px solid #111; background: #111; color: #fff; padding: 10px 14px; border-radius: 10px; font-weight: 700; cursor: pointer; }
-          .btn2 { border: 1px solid #aaa; background: #fff; color: #111; padding: 10px 14px; border-radius: 10px; font-weight: 700; cursor: pointer; }
-          .small { font-size: 12px; color: #555; }
-          .mt8 { margin-top: 8px; }
-          .mt12 { margin-top: 12px; }
-        `}</style>
-      </head>
-      <body style={baseStyle}>
-        <div className="wrap">
-          <div className="row">
-            <div>
-              <div className="h1">{printTitle}</div>
-              <div className="meta">
-                {filterLabel} · Data stampa: {nowIT()} · Totale ordini: {list.length}
-              </div>
-            </div>
-
-            <div className="no-print" style={{ display: "flex", gap: 8 }}>
-              <button className="btn" onClick={() => window.print()}>Stampa</button>
-              <button className="btn2" onClick={() => window.close()}>Chiudi</button>
-            </div>
-          </div>
-
-          {type === "byOrder" ? (
-            <ByOrder orders={list as any[]} />
-          ) : (
-            <ByProduct orders={list as any[]} />
-          )}
+  if (err) {
+    return (
+      <div className="mx-auto max-w-4xl p-6">
+        <div className="text-lg font-bold">Errore</div>
+        <div className="mt-2 text-sm text-red-700">{err}</div>
+        <div className="mt-4 flex gap-2">
+          <button className="rounded-lg border bg-white px-4 py-2 font-semibold" onClick={() => router.push("/admin/orders")}>
+            Chiudi
+          </button>
         </div>
-
-        <script dangerouslySetInnerHTML={{ __html: `setTimeout(() => { try { window.print(); } catch(e) {} }, 300);` }} />
-      </body>
-    </html>
-  );
-}
-
-function ByOrder({ orders }: { orders: any[] }) {
-  return (
-    <div className="mt12">
-      {orders.map((o) => {
-        let total = 0;
-        const rows = (o.order_items || []).map((it: any) => {
-          const p = it.products;
-          const qty = Number(it.qty ?? 1);
-          const price = p?.price_eur === null || p?.price_eur === undefined ? null : Number(p.price_eur);
-          if (price !== null && Number.isFinite(price)) total += price * qty;
-
-          return {
-            box: p?.box_number ?? "?",
-            prog: p?.progressive_number ?? "?",
-            qty,
-            price,
-          };
-        });
-
-        return (
-          <div className="card" key={o.id}>
-            <div style={{ fontWeight: 800 }}>
-              {o.customer_name} — {o.customer_phone} — Ordine {String(o.id).slice(0, 8)}…
-            </div>
-            <div className="small mt8">Creato: {new Date(o.created_at).toLocaleString("it-IT")}</div>
-
-            <table className="mt12">
-              <thead>
-                <tr>
-                  <th>Cassa</th>
-                  <th>Prog</th>
-                  <th>Q.tà</th>
-                  <th>Prezzo</th>
-                  <th>Totale riga</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r, idx) => (
-                  <tr key={idx}>
-                    <td>{r.box}</td>
-                    <td>{r.prog}</td>
-                    <td>{r.qty}</td>
-                    <td>{eur(r.price)}</td>
-                    <td>{r.price !== null ? eur(r.price * r.qty) : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div style={{ marginTop: 10, fontWeight: 900 }}>Totale ordine: {eur(total)}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function ByProduct({ orders }: { orders: any[] }) {
-  type K = string;
-  const map = new Map<K, { box: any; prog: any; price: any; customers: { name: string; phone: string; qty: number }[] }>();
-
-  for (const o of orders) {
-    for (const it of o.order_items || []) {
-      const p = it.products;
-      const qty = Number(it.qty ?? 1);
-      const key = `${p?.id || "?"}`;
-
-      const cur = map.get(key) || {
-        box: p?.box_number ?? "?",
-        prog: p?.progressive_number ?? "?",
-        price: p?.price_eur ?? null,
-        customers: [],
-      };
-
-      cur.customers.push({
-        name: String(o.customer_name || ""),
-        phone: String(o.customer_phone || ""),
-        qty,
-      });
-
-      map.set(key, cur);
-    }
+      </div>
+    );
   }
 
-  const products = Array.from(map.values()).sort((a, b) => {
-    const ab = Number(a.box ?? 0);
-    const bb = Number(b.box ?? 0);
-    if (Number.isFinite(ab) && Number.isFinite(bb) && ab !== bb) return ab - bb;
-    return String(a.prog).localeCompare(String(b.prog));
-  });
-
   return (
-    <div className="mt12">
-      <table>
-        <thead>
-          <tr>
-            <th>Cassa</th>
-            <th>Prog</th>
-            <th>Prezzo</th>
-            <th>Clienti (q.tà)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {products.map((p, idx) => (
-            <tr key={idx}>
-              <td>{p.box}</td>
-              <td>{p.prog}</td>
-              <td>{eur(p.price)}</td>
-              <td>
-                {p.customers.map((c, i) => (
-                  <div key={i}>
-                    {c.name} — {c.phone} (x{c.qty})
+    <div className="mx-auto max-w-5xl p-6">
+      <div className="mb-4 flex items-center justify-between gap-2 print:hidden">
+        <button className="rounded-lg border bg-white px-4 py-2 font-semibold" onClick={() => router.push("/admin/orders")}>
+          Chiudi
+        </button>
+        <div className="flex gap-2">
+          <button className="rounded-lg bg-black px-4 py-2 font-semibold text-white" onClick={() => window.print()}>
+            Stampa
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-3 text-center">
+        <div className="text-2xl font-bold">{title}</div>
+        <div className="text-sm text-gray-600">Stampato il {new Date().toLocaleString("it-IT")}</div>
+      </div>
+
+      {mode !== "product" ? (
+        <div className="space-y-4">
+          {orders.map((o) => {
+            const phone = String(o.customer_phone || "").trim();
+            const company = customerByPhone[phone]?.company ?? null;
+
+            const rows = itemsByOrder[o.id] || [];
+            let tot = 0;
+            for (const r of rows) {
+              const pr = r.products?.price_eur ?? null;
+              if (pr !== null && pr !== undefined) tot += Number(pr) * Number(r.qty ?? 1);
+            }
+
+            return (
+              <div key={o.id} className="rounded-2xl border bg-white p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <div className="text-lg font-bold">
+                    {o.customer_name} {company ? `(${company})` : ""} — {o.customer_phone}
+                  </div>
+                  <div className="text-sm text-gray-600">{new Date(o.created_at).toLocaleString("it-IT")}</div>
+                </div>
+
+                <div className="mt-3 grid gap-2">
+                  {rows.map((r, idx) => {
+                    const p = r.products;
+                    if (!p) return null;
+                    const q = Number(r.qty ?? 1);
+                    return (
+                      <div key={idx} className="flex items-center justify-between gap-2 text-sm">
+                        <div>
+                          • Cassa {p.box_number} (Prog {p.progressive_number}) × {q}
+                        </div>
+                        <div className="font-semibold">{eur(p.price_eur)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-3 text-right font-bold">Totale: € {tot.toFixed(2)}</div>
+              </div>
+            );
+          })}
+
+          {orders.length === 0 && <div className="text-sm text-gray-600">Nessun ordine nel periodo selezionato.</div>}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {productView.map((p) => (
+            <div key={p.productId} className="rounded-2xl border bg-white p-4">
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="text-lg font-bold">
+                  Cassa {p.box} — Prog {p.prog}
+                </div>
+                <div className="text-sm font-semibold">{eur(p.price)}</div>
+              </div>
+
+              <div className="mt-3 grid gap-1 text-sm">
+                {p.customers.map((c, idx) => (
+                  <div key={idx}>
+                    • {c.name} {c.company ? `(${c.company})` : ""} — {c.phone} × {c.qty}
                   </div>
                 ))}
-              </td>
-            </tr>
+              </div>
+            </div>
           ))}
-        </tbody>
-      </table>
+
+          {productView.length === 0 && <div className="text-sm text-gray-600">Nessun ordine nel periodo selezionato.</div>}
+        </div>
+      )}
     </div>
   );
 }
