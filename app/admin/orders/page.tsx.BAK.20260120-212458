@@ -1,9 +1,6 @@
 "use client";
 
-
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 type Order = {
@@ -235,7 +232,7 @@ export default function AdminOrdersPage() {
 
   async function deleteOrdersRange() {
     if (!fromDate || !toDate) {
-      alert("Inserisci sia Da che A (GG/MM/AAAA)");
+      alert("Inserisci sia Da che A (YYYY-MM-DD)");
       return;
     }
     if (!confirm(`Cancellare ordini dal ${fromDate} al ${toDate}?`)) return;
@@ -245,7 +242,7 @@ export default function AdminOrdersPage() {
       const res = await fetch("/api/admin/delete-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "range", from: fromDate, to: toDate, deletePdfs }),
+        body: JSON.stringify({ fromDate, toDate, deletePdfs }),
       });
 
       const json = await res.json();
@@ -270,7 +267,7 @@ export default function AdminOrdersPage() {
       const res = await fetch("/api/admin/delete-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "all", deletePdfs }),
+        body: JSON.stringify({ deleteAll: true, deletePdfs }),
       });
 
       const json = await res.json();
@@ -321,21 +318,21 @@ export default function AdminOrdersPage() {
 
         <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-600">Da (GG/MM/AAAA)</label>
-            <input type="date"
+            <label className="text-xs text-gray-600">Da (YYYY-MM-DD)</label>
+            <input
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
-              placeholder="gg/mm/aaaa"
+              placeholder="2026-01-18"
               className="rounded-lg border px-3 py-2"
             />
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-600">A (GG/MM/AAAA)</label>
-            <input type="date"
+            <label className="text-xs text-gray-600">A (YYYY-MM-DD)</label>
+            <input
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
-              placeholder="gg/mm/aaaa"
+              placeholder="2026-01-18"
               className="rounded-lg border px-3 py-2"
             />
           </div>
@@ -349,43 +346,6 @@ export default function AdminOrdersPage() {
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
-
-          <button
-            type="button"
-            className="rounded-lg border bg-white px-4 py-2 font-semibold disabled:opacity-60"
-            disabled={loading}
-            onClick={() => window.open(`/admin/orders/print?mode=all&type=byOrder`, "_blank")}
-          >
-            Stampa tutti (cliente / casse / prezzo)
-          </button>
-
-          <button
-            type="button"
-            className="rounded-lg border bg-white px-4 py-2 font-semibold disabled:opacity-60"
-            disabled={loading}
-            onClick={() => window.open(`/admin/orders/print?mode=all&type=byProduct`, "_blank")}
-          >
-            Stampa tutti (prodotto / clienti)
-          </button>
-
-          <button
-            type="button"
-            className="rounded-lg border bg-white px-4 py-2 font-semibold disabled:opacity-60"
-            disabled={loading || !fromDate || !toDate}
-            onClick={() => window.open(`/admin/orders/print?mode=range&type=byOrder&from=&to=`, "_blank")}
-          >
-            Stampa X–Y (cliente / casse / prezzo)
-          </button>
-
-          <button
-            type="button"
-            className="rounded-lg border bg-white px-4 py-2 font-semibold disabled:opacity-60"
-            disabled={loading || !fromDate || !toDate}
-            onClick={() => window.open(`/admin/orders/print?mode=range&type=byProduct&from=&to=`, "_blank")}
-          >
-            Stampa X–Y (prodotto / clienti)
-          </button>
-
           <button
             type="button"
             className="rounded-lg bg-black px-4 py-2 font-semibold text-white disabled:opacity-60"

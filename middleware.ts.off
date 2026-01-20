@@ -1,0 +1,29 @@
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+
+export function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  // lascia passare login
+  if (pathname.startsWith("/admin/login")) return NextResponse.next();
+
+  // protegge tutto /admin/*
+  if (pathname.startsWith("/admin")) {
+    // Supabase (con @supabase/auth-helpers) usa cookie tipo:
+    // sb-<project-ref>-auth-token
+    const hasSbCookie =
+      req.cookies.getAll().some((c) => c.name.includes("sb-") && c.name.includes("auth-token"));
+
+    if (!hasSbCookie) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/admin/login";
+      return NextResponse.redirect(url);
+    }
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ["/admin/:path*"],
+};

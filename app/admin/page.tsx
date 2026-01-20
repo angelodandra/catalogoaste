@@ -147,6 +147,14 @@ export default function AdminPage() {
             Gestisci ordini
           </a>
 
+            <a
+              href="/admin/customers"
+              className="block rounded-2xl border bg-white p-4 shadow-sm hover:bg-gray-50"
+            >
+              <div className="text-lg font-bold">Clienti</div>
+              <div className="text-sm text-gray-600">Gestisci autorizzazioni (revoca/riattiva)</div>
+            </a>
+
           <button
             onClick={load}
             disabled={loading}

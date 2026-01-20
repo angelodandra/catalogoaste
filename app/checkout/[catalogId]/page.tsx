@@ -14,6 +14,33 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
 
+  // Autofill: salva/recupera dati cliente in locale (così non li reinserisce ogni volta)
+  function getLS(key: string) {
+    try { return (localStorage.getItem(key) || "").trim(); } catch { return ""; }
+  }
+  function setLS(key: string, val: string) {
+    try { localStorage.setItem(key, val); } catch {}
+  }
+
+  useEffect(() => {
+    // prova a recuperare dati salvati
+    const n = getLS("checkout:customerName");
+    const ph = getLS("checkout:customerPhone");
+
+    if (!customerName.trim() && n) setCustomerName(n);
+    if (!customerPhone.trim() && ph) setCustomerPhone(ph);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogId]);
+
+  useEffect(() => {
+    // salva mentre scrive
+    if (customerName.trim()) setLS("checkout:customerName", customerName.trim());
+  }, [customerName]);
+
+  useEffect(() => {
+    if (customerPhone.trim()) setLS("checkout:customerPhone", customerPhone.trim());
+  }, [customerPhone]);
+
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string>("");
 

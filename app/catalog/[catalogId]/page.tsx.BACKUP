@@ -3,10 +3,7 @@
 import { use, useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import { Grid3x3, type ProductUI } from "@/components/Grid3x3";
-import PaginationBar from "@/components/PaginationBar";
-import AccessGate from "@/components/AccessGate";
-import FloatingCartButton from "@/components/FloatingCartButton";
-import CartDrawer from "@/components/CartDrawer";
+import { CartDrawer, type CartItem } from "@/components/CartDrawer";
 import { useRouter } from "next/navigation";
 
 const PER_PAGE = 9;
@@ -20,7 +17,6 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
   const [cartOpen, setCartOpen] = useState(false);
 
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [authorized, setAuthorized] = useState(false);
   const [cartReady, setCartReady] = useState(false);
 
   useEffect(() => {
@@ -92,7 +88,6 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
   }, [products, page]);
 
   function addToCart(p: ProductUI) {
-    if (!authorized) return;
     if (p.is_sold) return;
 
     setCart((prev) => {
@@ -115,14 +110,14 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
     setCart((prev) => prev.filter((x) => x.product.id !== productId));
   }
 
-  const cartCount = cart.length;
-return (
+  const cartCount = cart.reduce((a, b) => a + b.qty, 0);
+
+  return (
     <div className="mx-auto max-w-5xl p-4">
-      
-      <AccessGate onAuthorizedChange={setAuthorized} />
-<div className="mb-6 flex justify-center">
+      <div className="mb-6 flex justify-center">
         <img src="/logo.jpg" alt="Logo azienda" className="h-20 w-auto" />
       </div>
+
       <div className="flex items-center justify-between gap-3">
         <div className="text-xl font-bold">Catalogo</div>
 
@@ -136,12 +131,8 @@ return (
       </div>
 
       <div className="mt-4">
-        <Grid3x3 products={view} onAdd={addToCart} showPrices={authorized} canAdd={authorized} />
-      
-        <PaginationBar page={page} totalPages={totalPages} onPageChange={setPage} />
-
-        <FloatingCartButton count={cartCount} onOpen={() => setCartOpen(true)} />
-</div>
+        <Grid3x3 products={view} onAdd={addToCart} />
+      </div>
 
       <div className="mt-4 flex items-center justify-between">
         <button
@@ -168,9 +159,10 @@ return (
       <CartDrawer
         open={cartOpen}
         onClose={() => setCartOpen(false)}
-        items={cart.map((x) => x.product)}
-        setQty={setQty}        onRemove={(id: string) => remove(id)}
-        onCheckout={() => authorized && router.push(`/checkout/${catalogId}`)}
+        items={cart}
+        setQty={setQty}
+        remove={remove}
+        onCheckout={() => router.push(`/checkout/${catalogId}`)}
       />
     </div>
   );

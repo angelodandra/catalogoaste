@@ -11,8 +11,6 @@ export const runtime = "nodejs";
  *   to?: "YYYY-MM-DD",
  *   deletePdfs?: boolean
  * }
- *
- * Range: include from 00:00:00 to to 23:59:59 (local logic).
  */
 export async function POST(req: Request) {
   try {
@@ -28,26 +26,42 @@ export async function POST(req: Request) {
 
     const supabase = supabaseServer();
 
-    // Costruisco filtro su created_at (UTC ISO)
-    // from -> YYYY-MM-DDT00:00:00Z
-    // to   -> YYYY-MM-DDT23:59:59Z
     const fromIso = mode === "range" ? `${from}T00:00:00Z` : null;
     const toIso = mode === "range" ? `${to}T23:59:59Z` : null;
 
-    // 1) prendo gli order id da cancellare
     let q = supabase.from("orders").select("id");
     if (mode === "range") {
       q = q.gte("created_at", fromIso!).lte("created_at", toIso!);
     }
+
     const { data: orders, error: oErr } = await q;
     if (oErr) throw oErr;
 
     const orderIds = (orders || []).map((x: any) => x.id);
     if (orderIds.length === 0) {
-      return NextResponse.json({ ok: true, deletedOrders: 0, deletedItems: 0, deletedPdfs: 0 });
+      return NextResponse.json({ ok: true, deletedOrders: 0, deletedItems: 0, deletedPdfs: 0, releasedProducts: 0 });
     }
 
-    // 2) cancello righe (order_items) prima
+    const { data: oi, error: oiErr } = await supabase
+      .from("order_items")
+      .select("product_id")
+      .in("order_id", orderIds);
+
+    if (oiErr) throw oiErr;
+
+    const productIds = Array.from(new Set((oi || []).map((x: any) => x.product_id).filter(Boolean)));
+
+    let releasedProducts = 0;
+    if (productIds.length > 0) {
+      const { error: pErr, count: pCount } = await supabase
+        .from("products")
+        .update({ is_sold: false }, { count: "exact" })
+        .in("id", productIds);
+
+      if (pErr) throw pErr;
+      releasedProducts = pCount ?? productIds.length;
+    }
+
     const { error: iErr, count: itemsCount } = await supabase
       .from("order_items")
       .delete({ count: "exact" })
@@ -55,7 +69,6 @@ export async function POST(req: Request) {
 
     if (iErr) throw iErr;
 
-    // 3) cancello ordini
     const { error: dErr, count: ordersCount } = await supabase
       .from("orders")
       .delete({ count: "exact" })
@@ -63,11 +76,9 @@ export async function POST(req: Request) {
 
     if (dErr) throw dErr;
 
-    // 4) opzionale: cancella pdf in storage (orders/<id>.pdf)
     let deletedPdfs = 0;
     if (deletePdfs) {
       const paths = orderIds.map((id) => `orders/${id}.pdf`);
-      // Supabase storage remove è idempotente: se non trova, non è un dramma
       const { error: sErr } = await supabase.storage.from("order-pdfs").remove(paths);
       if (sErr) throw sErr;
       deletedPdfs = paths.length;
@@ -78,6 +89,7 @@ export async function POST(req: Request) {
       deletedOrders: ordersCount ?? orderIds.length,
       deletedItems: itemsCount ?? 0,
       deletedPdfs,
+      releasedProducts,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? "Errore server" }, { status: 500 });
