@@ -1,25 +1,30 @@
-import { supabaseServer } from "@/lib/supabaseServer";
+"use client";
 
-export default async function TestSupabasePage() {
-  const supabase = supabaseServer();
-  const { data, error } = await supabase
-    .from("catalogs")
-    .select("id,title,is_active,created_at")
-    .order("created_at", { ascending: false });
+import { useEffect, useState } from "react";
 
-  return (
-    <div style={{ padding: 24, fontFamily: "Arial, sans-serif" }}>
-      <h1>Test Supabase</h1>
+export const dynamic = "force-dynamic";
 
-      {error && (
-        <pre style={{ background: "#fee", padding: 12 }}>
-          Errore: {JSON.stringify(error, null, 2)}
-        </pre>
-      )}
+export default function Page() {
+  const [msg, setMsg] = useState("Test Supabase…");
 
-      <pre style={{ background: "#f6f6f6", padding: 12 }}>
-        {JSON.stringify(data, null, 2)}
-      </pre>
-    </div>
-  );
+  useEffect(() => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!url || !key) {
+      setMsg("Mancano NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_ANON_KEY");
+      return;
+    }
+
+    (async () => {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabase = createClient(url, key);
+
+      const { data, error } = await supabase.from("catalogs").select("id").limit(1);
+      if (error) setMsg("Errore: " + error.message);
+      else setMsg("OK: " + JSON.stringify(data));
+    })().catch((e: any) => setMsg("Errore: " + String(e?.message ?? e)));
+  }, []);
+
+  return <div className="p-6 text-sm">{msg}</div>;
 }
