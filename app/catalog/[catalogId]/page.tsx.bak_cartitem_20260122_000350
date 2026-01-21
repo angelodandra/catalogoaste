@@ -11,7 +11,6 @@ import { useRouter } from "next/navigation";
 
 const PER_PAGE = 9;
 
-type CartItem = { product: ProductUI; qty: number };
 export default function CatalogClientPage(props: { params: Promise<{ catalogId: string }> }) {
   const { catalogId } = use(props.params);
   const router = useRouter();

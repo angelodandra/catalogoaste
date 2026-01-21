@@ -40,7 +40,6 @@ export async function POST(req: Request) {
 
     // rollback scope (serve anche nel catch finale)
     let productIds: string[] = [];
-    let reservedOk = false;
   try {
     const __waDebug: any = { step: "start" };
     const body = await req.json();
@@ -91,6 +90,7 @@ export async function POST(req: Request) {
 
     const appBaseUrl = process.env.APP_BASE_URL || "http://127.0.0.1:3000";
     productIds = items.map((i) => i.productId);
+    let reservedOk = false;
 // 1) crea ordine (usa dati customers)
     const { data: order, error: oErr } = await supabase
       .from("orders")

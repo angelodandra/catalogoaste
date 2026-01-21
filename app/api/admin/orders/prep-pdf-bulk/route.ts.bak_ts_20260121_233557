@@ -19,7 +19,7 @@ async function fetchAsBuffer(url: string) {
 function pdfToBuffer(doc: any) {
   return new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = [];
-    doc.on("data", (c: any) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+    doc.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
   });
@@ -310,7 +310,7 @@ const rangeLabel = from && to ? `${from} → ${to}` : "tutti";
 
     const pdfBuffer = await pdfPromise;
 
-    return new NextResponse(new Uint8Array(pdfBuffer), {
+    return new NextResponse(pdfBuffer, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="prep-cumulativo.pdf"`,

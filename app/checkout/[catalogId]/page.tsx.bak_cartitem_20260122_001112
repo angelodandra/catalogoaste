@@ -1,9 +1,8 @@
 "use client";
 
 import { use, useEffect, useMemo, useState } from "react";
-import type { ProductUI } from "@/components/Grid3x3";
 import { useRouter } from "next/navigation";
-type CartItem = { product: ProductUI; qty: number };
+import type { CartItem } from "@/components/CartDrawer";
 
 export default function CheckoutPage(props: { params: Promise<{ catalogId: string }> }) {
   const { catalogId } = use(props.params);

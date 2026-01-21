@@ -104,7 +104,7 @@ export async function GET(req: Request) {
           const maxW = 190;
           const maxH = 48;
           const xLogo = (pageW - maxW) / 2;
-          doc.image(logoBuf, xLogo, topY - 6, { fit: [maxW, maxH], align: "center"});
+          doc.image(logoBuf, xLogo, topY - 6, { fit: [maxW, maxH], align: "center", valign: "top" });
         } else {
           // fallback testo se il logo non c'è
           doc.fontSize(18).font("Helvetica-Bold").text("F.lli D'Andrassi", startX, topY);
@@ -175,7 +175,7 @@ export async function GET(req: Request) {
       }
     });
 
-    return new NextResponse(pdf as any, {
+    return new NextResponse(pdf, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="catalogo-${catalogId}.pdf"`,

@@ -175,7 +175,7 @@ export async function GET(req: Request) {
       }
     });
 
-    return new NextResponse(pdf as any, {
+    return new NextResponse(pdf, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="catalogo-${catalogId}.pdf"`,

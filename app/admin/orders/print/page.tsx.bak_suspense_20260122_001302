@@ -1,0 +1,365 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
+
+const base = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+
+const imgUrl = (path?: string | null) => {
+  if (!path) return "";
+  const v = String(path);
+  if (v.startsWith("http://") || v.startsWith("https://")) return v;
+  return `${base}/storage/v1/object/public/catalog-images/${v}`;
+};
+
+type Order = {
+  id: string;
+  customer_name: string;
+  customer_phone: string;
+  created_at: string;
+};
+
+type OrderItemRow = {
+  order_id: string;
+  qty: number;
+  products: {
+    id: string;
+    progressive_number: number;
+    box_number: string;
+    image_path?: string | null;
+    price_eur: number | null;
+  } | null;
+};
+
+function eur(n: number | null | undefined) {
+  if (n === null || n === undefined) return "—";
+  const v = Number(n);
+  if (!Number.isFinite(v)) return "—";
+  return `€ ${v.toFixed(2)}`;
+}
+
+export default function OrdersPrintPage() {
+  const router = useRouter();
+  const sp = useSearchParams();
+
+  // mode: customer | product
+  const mode = (sp.get("mode") || "customer").toLowerCase();
+  const from = (sp.get("from") || "").trim(); // YYYY-MM-DD
+  const to = (sp.get("to") || "").trim();     // YYYY-MM-DD
+
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [items, setItems] = useState<OrderItemRow[]>([]);
+  const [customerByPhone, setCustomerByPhone] = useState<Record<string, { company?: string | null }>>({});
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      setErr("");
+
+      try {
+        let q = supabaseBrowser
+          .from("orders")
+          .select("id,customer_name,customer_phone,created_at")
+          .order("created_at", { ascending: true })
+          .limit(500);
+
+        // filtro date (solo se entrambe presenti)
+        if (from && to) {
+          q = q.gte("created_at", `${from}T00:00:00Z`).lte("created_at", `${to}T23:59:59Z`);
+        }
+
+        const { data: oData, error: oErr } = await q;
+        if (oErr) throw oErr;
+
+        const o = (oData || []) as any as Order[];
+        setOrders(o);
+
+        const orderIds = o.map((x) => x.id);
+        if (!orderIds.length) {
+          setItems([]);
+          setCustomerByPhone({});
+          return;
+        }
+
+        const { data: iData, error: iErr } = await supabaseBrowser
+          .from("order_items")
+          .select("order_id,qty,products(id,box_number,image_path,price_eur,image_path)")
+          .in("order_id", orderIds);
+
+        if (iErr) throw iErr;
+        const it = (iData || []) as any as OrderItemRow[];
+        setItems(it);
+
+        // lookup aziende per telefono
+        try {
+          const phones = Array.from(
+            new Set(o.map((x) => String(x.customer_phone || "").trim()).filter(Boolean))
+          );
+
+          if (!phones.length) {
+            setCustomerByPhone({});
+          } else {
+            const { data: custs, error: cErr } = await supabaseBrowser
+              .from("customers")
+              .select("phone, company")
+              .in("phone", phones);
+
+            if (cErr) throw cErr;
+
+            const map: Record<string, { company?: string | null }> = {};
+            for (const c of (custs || []) as any[]) {
+              map[String(c.phone).trim()] = { company: c.company ?? null };
+            }
+            setCustomerByPhone(map);
+          }
+        } catch {
+          setCustomerByPhone({});
+        }
+      } catch (e: any) {
+        setErr(e?.message ?? "Errore caricando dati stampa");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [from, to]);
+
+  const itemsByOrder = useMemo(() => {
+    const m: Record<string, OrderItemRow[]> = {};
+    for (const r of items) {
+      if (!m[r.order_id]) m[r.order_id] = [];
+      m[r.order_id].push(r);
+    }
+    return m;
+  }, [items]);
+
+  const customerGroups = useMemo(() => {
+    // Raggruppa per cliente (telefono). Dentro: casse aggregate (somma qty per box)
+    const gm: Record<
+      string,
+      {
+        phone: string;
+        name: string;
+        company?: string | null;
+        createdAts: string[];
+        boxes: Record<string, { box: string; qty: number; price: number | null }>;
+      }
+    > = {};
+
+    for (const o of orders) {
+      const phone = String(o.customer_phone || "").trim() || "—";
+      const company = customerByPhone[phone]?.company ?? null;
+
+      if (!gm[phone]) {
+        gm[phone] = {
+          phone,
+          name: String(o.customer_name || "").trim() || "Cliente",
+          company,
+          createdAts: [],
+          boxes: {},
+        };
+      }
+
+      gm[phone].createdAts.push(o.created_at);
+
+      const rows = itemsByOrder[o.id] || [];
+      for (const r of rows) {
+        const pr = r.products;
+        if (!pr) continue;
+
+        const box = String(pr.box_number || "?");
+        const qty = Number(r.qty ?? 1);
+
+        const price =
+          pr.price_eur === null || pr.price_eur === undefined ? null : Number(pr.price_eur);
+
+        if (!gm[phone].boxes[box]) {
+          gm[phone].boxes[box] = { box, qty: 0, price };
+        }
+        gm[phone].boxes[box].qty += qty;
+
+        // se il prezzo arriva dopo, lo teniamo
+        if (gm[phone].boxes[box].price === null && price !== null) {
+          gm[phone].boxes[box].price = price;
+        }
+      }
+    }
+
+    
+    const arr = Object.values(gm).map((g) => {
+      const boxesArr = Object.values(g.boxes).sort((a, b) => Number(a.box) - Number(b.box));
+      let tot = 0;
+      for (const b of boxesArr) {
+        if (b.price !== null && Number.isFinite(b.price)) tot += b.price * b.qty;
+      }
+      const createdSorted = [...g.createdAts].sort();
+      return {
+        ...g,
+        boxesArr,
+        tot,
+        createdMin: createdSorted[0] ?? null,
+        createdMax: createdSorted[createdSorted.length - 1] ?? null,
+        ordersCount: g.createdAts.length,
+      };
+    });
+
+    arr.sort(
+      (a, b) =>
+        (a.name || "").localeCompare(b.name || "") ||
+        (a.phone || "").localeCompare(b.phone || "")
+    );
+    return arr;
+
+  }, [orders, itemsByOrder, customerByPhone]);
+
+
+  const productView = useMemo(() => {
+    // productId -> { box, prog, price, customers: [{name, company, phone, qty}] }
+    const pm: Record<
+      string,
+      {
+          productId: string;
+          box: string;
+          prog: string | number;
+          price: number | null;
+          customers: { name: string; company?: string | null; phone: string; qty: number }[];
+          imagePath?: string | null;
+        }
+    > = {};
+
+    const orderById: Record<string, Order> = {};
+    for (const o of orders) orderById[o.id] = o;
+
+    for (const row of items) {
+      const p = row.products;
+      if (!p) continue;
+
+      const ord = orderById[row.order_id];
+      if (!ord) continue;
+
+      const phone = String(ord.customer_phone || "").trim();
+      const company = customerByPhone[phone]?.company ?? null;
+
+      if (!pm[p.id]) {
+        pm[p.id] = {
+          productId: p.id,
+          box: p.box_number ?? "?",
+          prog: (p.progressive_number ?? "?") as any,
+          price: p.price_eur ?? null,
+          customers: [],
+          imagePath: (p as any).image_path ?? null,
+        };
+}
+    const arr = Object.values(pm);
+    return arr;
+  }
+  }, [orders, items, customerByPhone]);
+
+  const title = useMemo(() => {
+    const range = from && to ? `(${from} → ${to})` : "(tutti)";
+    return mode === "product" ? `Stampa ordini per prodotto ${range}` : `Stampa ordini per cliente ${range}`;
+  }, [mode, from, to]);
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-4xl p-6">
+        <div className="text-lg font-bold">Carico stampa…</div>
+      </div>
+    );
+  }
+
+  if (err) {
+    return (
+      <div className="mx-auto max-w-4xl p-6">
+        <div className="text-lg font-bold">Errore</div>
+        <div className="mt-2 text-sm text-red-700">{err}</div>
+        <div className="mt-4 flex gap-2">
+          <button className="rounded-lg border bg-white px-4 py-2 font-semibold" onClick={() => { try { router.push("/admin/orders"); } catch {} try { window.close(); } catch {} }}>
+            Chiudi
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-5xl p-6">
+      <div className="mb-4 flex items-center justify-between gap-2 print:hidden">
+        <button className="rounded-lg border bg-white px-4 py-2 font-semibold" onClick={() => { try { router.push("/admin/orders"); } catch {} try { window.close(); } catch {} }}>
+          Chiudi
+        </button>
+        <div className="flex gap-2">
+          <button className="rounded-lg bg-black px-4 py-2 font-semibold text-white" onClick={() => window.print()}>
+            Stampa
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-3 text-center">
+        <div className="text-2xl font-bold">{title}</div>
+        <div className="text-sm text-gray-600">Stampato il {new Date().toLocaleString("it-IT")}</div>
+      </div>
+
+      {mode !== "product" ? (
+        <div className="space-y-4">
+          {customerGroups.map((g) => (
+            <div key={g.phone} className="rounded-2xl border bg-white p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div className="text-lg font-bold">
+                  {g.name} {g.company ? `(${g.company})` : ""} — {g.phone}
+                </div>
+                <div className="text-sm text-gray-600">
+                  {g.ordersCount > 1
+                    ? `${g.ordersCount} ordini — ${new Date(g.createdMin!).toLocaleString("it-IT")} → ${new Date(g.createdMax!).toLocaleString("it-IT")}`
+                    : `${new Date(g.createdMin!).toLocaleString("it-IT")}`}
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-2">
+                {g.boxesArr.map((b, idx) => (
+                  <div key={idx} className="flex items-center justify-between gap-2 text-sm">
+                    <div>• Cassa {b.box} × {b.qty}</div>
+                    <div className="font-semibold">{eur(b.price)}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-3 text-right font-bold">Totale: € {Number(g.tot).toFixed(2)}</div>
+            </div>
+          ))}
+
+          {customerGroups.length === 0 && (
+            <div className="text-sm text-gray-600">Nessun ordine nel periodo selezionato.</div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {(productView ?? []).map((p) => (
+            <div key={p.productId} className="rounded-2xl border bg-white p-4">
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="text-lg font-bold">
+                  <span className="inline-flex items-center gap-2"><img src={imgUrl(p.imagePath)} className="h-12 w-12 rounded border object-cover" /><span><span className="inline-flex items-center gap-2"><img src={imgUrl(p.imagePath)} className="h-12 w-12 rounded border object-cover" /><span>Cassa {p.box}</span></span></span></span>
+                </div>
+                <div className="text-sm font-semibold">{eur(p.price)}</div>
+              </div>
+
+              <div className="mt-3 grid gap-1 text-sm">
+                {p.customers.map((c, idx) => (
+                  <div key={idx}>
+                    • {c.name} {c.company ? `(${c.company})` : ""} — {c.phone} × {c.qty}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {((productView ?? []).length === 0) && (
+  <div className="text-sm text-gray-600">Nessun ordine nel periodo selezionato.</div>
+)}
+</div>
+      )}
+    </div>
+  );
+}

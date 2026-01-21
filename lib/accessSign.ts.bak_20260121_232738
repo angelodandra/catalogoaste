@@ -27,7 +27,7 @@ export function normalizePhone(input: string) {
   return "+" + x;
 }
 
-export function signAccess(params: { phone: string; exp: string; action: "approve" | "revoke" | "login" }) {
+export function signAccess(params: { phone: string; exp: string; action: "approve" | "revoke" }) {
   const secret = process.env.ACCESS_APPROVE_SECRET || "";
   if (!secret) throw new Error("ACCESS_APPROVE_SECRET mancante in .env.local");
 
@@ -36,7 +36,7 @@ export function signAccess(params: { phone: string; exp: string; action: "approv
   return sig;
 }
 
-export function verifyAccess(params: { phone: string; exp: string; action: "approve" | "revoke" | "login"; sig: string }) {
+export function verifyAccess(params: { phone: string; exp: string; action: "approve" | "revoke"; sig: string }) {
   const expected = signAccess({ phone: params.phone, exp: params.exp, action: params.action });
   return crypto.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(params.sig, "hex"));
 }

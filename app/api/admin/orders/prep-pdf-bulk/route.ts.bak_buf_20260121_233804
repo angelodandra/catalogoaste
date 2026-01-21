@@ -310,7 +310,7 @@ const rangeLabel = from && to ? `${from} → ${to}` : "tutti";
 
     const pdfBuffer = await pdfPromise;
 
-    return new NextResponse(new Uint8Array(pdfBuffer), {
+    return new NextResponse(pdfBuffer, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="prep-cumulativo.pdf"`,

@@ -182,7 +182,7 @@ export async function GET(req: Request) {
 
     const pdfBuffer = await pdfToBuffer(doc);
 
-    return new NextResponse(new Uint8Array(pdfBuffer), {
+    return new NextResponse(pdfBuffer, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="prep-.pdf"`,

@@ -11,10 +11,10 @@ async function fetchAsBuffer(url: string) {
   return Buffer.from(ab);
 }
 
-function pdfToBuffer(doc: any) {
+function pdfToBuffer(doc: PDFDocument) {
   return new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = [];
-    doc.on("data", (c: any) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+    doc.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
     doc.end();
@@ -182,7 +182,7 @@ export async function GET(req: Request) {
 
     const pdfBuffer = await pdfToBuffer(doc);
 
-    return new NextResponse(new Uint8Array(pdfBuffer), {
+    return new NextResponse(pdfBuffer, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="prep-.pdf"`,
