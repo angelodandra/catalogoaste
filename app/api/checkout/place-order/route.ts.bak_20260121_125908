@@ -37,9 +37,6 @@ function normalizePhone(raw: string) {
 export async function POST(req: Request) {
   const supabase = supabaseServer();
 
-
-    // rollback scope (serve anche nel catch finale)
-    let productIds: string[] = [];
   try {
     const __waDebug: any = { step: "start" };
     const body = await req.json();
@@ -89,9 +86,9 @@ export async function POST(req: Request) {
     const ownerPhoneN = normalizePhone(ownerPhone);
 
     const appBaseUrl = process.env.APP_BASE_URL || "http://127.0.0.1:3000";
-    productIds = items.map((i) => i.productId);
-    let reservedOk = false;
-// 1) crea ordine (usa dati customers)
+    const productIds = items.map((i) => i.productId);
+
+    // 1) crea ordine (usa dati customers)
     const { data: order, error: oErr } = await supabase
       .from("orders")
       .insert({
@@ -107,21 +104,11 @@ export async function POST(req: Request) {
     if (oErr) throw oErr;
 
     // 2) blocca prodotti (atomic)
-    
-const { error: rErr } = await supabase.rpc("reserve_products", { p_product_ids: productIds });
-
-if (rErr) {
-  // reserve fallita: segno ordine failed (best-effort) e torno 409
-  try {
-    await supabase.from("orders").update({ status: "failed" }).eq("id", order.id);
-  } catch {}
-  return NextResponse.json({ error: "Uno o più prodotti sono già esauriti. Riprova." }, { status: 409 });
-}
-
-reservedOk = true;
-
-// DEBUG: forza errore subito dopo la reserve (per test rollback)
-    if (body?.debugFailAfterReserve) throw new Error("DEBUG_FAIL_AFTER_RESERVE");
+    const { error: rErr } = await supabase.rpc("reserve_products", { p_product_ids: productIds });
+    if (rErr) {
+      await supabase.from("orders").update({ status: "failed" }).eq("id", order.id);
+      return NextResponse.json({ error: "Uno o più prodotti sono già esauriti. Riprova." }, { status: 409 });
+    }
 
     // 3) salva righe ordine
     const rows = items.map((it) => ({
@@ -136,31 +123,19 @@ reservedOk = true;
     // 4) chiudi ordine
     const { error: uErr } = await supabase.from("orders").update({ status: "completed" }).eq("id", order.id);
     if (uErr) throw uErr;
+
     // 5) genera PDF
     let pdfPublicUrl: string | null = null;
     try {
-      const res = await fetch("http://127.0.0.1:3000/api/orders/generate-pdf", {
+      const res = await fetch(`${appBaseUrl}/api/orders/generate-pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId: order.id }),
       });
+      const json = await res.json();
+      if (res.ok) pdfPublicUrl = json.pdfPublicUrl ?? null;
+    } catch {}
 
-      const raw = await res.text();
-      let json: any = null;
-      try {
-        json = JSON.parse(raw);
-      } catch {}
-
-      __waDebug.pdf = {
-        ok: res.ok,
-        status: res.status,
-        body: json ?? raw,
-      };
-
-      if (res.ok) pdfPublicUrl = (json?.pdfPublicUrl ?? null) as any;
-    } catch (e: any) {
-      __waDebug.pdf = { ok: false, error: e?.message ?? String(e) };
-    }
     // 6) prepara testo WhatsApp
     const { data: orderItems, error: oiErr } = await supabase
       .from("order_items")
@@ -201,9 +176,6 @@ reservedOk = true;
     let waOk = false;
     let waError: string | null = null;
 
-    let waOwnerSid: string | null = null;
-    let waCustomerSid: string | null = null;
-
     try {
       const r = await sendWhatsAppOrder({
         toPhones: [ownerPhoneN || ownerPhone.trim()],
@@ -211,34 +183,12 @@ reservedOk = true;
         mediaUrl: pdfPublicUrl,
       });
 
-
-      waOwnerSid = (r as any)?.successes?.[0]?.sid ?? null;
       waOk = (r.ok ?? 0) > 0;
       if (!waOk) waError = r.failures?.[0] ?? "WhatsApp send failed";
     } catch (e: any) {
       waOk = false;
       waError = e?.message ?? String(e);
     }
-
-
-    // 7b) invio WhatsApp al CLIENTE (conferma ordine)
-    try {
-      const waTextCustomer =
-        `✅ *${brand}* — Conferma ordine\n` +
-        `🕒 ${nowIT()}\n` +
-        `👤 Cliente: ${customerName}\n` +
-        `📦 *Casse:*\n${lines.join("\n")}\n\n` +
-        `💶 *Totale:* € ${total.toFixed(2)}\n` +
-        (pdfPublicUrl ? `📄 PDF: ${pdfPublicUrl}\n` : ``);
-
-      const rCust = await sendWhatsAppOrder({
-        toPhones: [customerPhoneN],
-        body: waTextCustomer,
-        mediaUrl: null,
-      });
-
-      waCustomerSid = (rCust as any)?.successes?.[0]?.sid ?? null;
-    } catch {}
 
     // 8) salva stato WA su DB (best-effort)
     try {
@@ -248,8 +198,6 @@ reservedOk = true;
           wa_status: waOk ? "sent" : "failed",
           wa_error: waOk ? null : waError,
           wa_last_attempt_at: new Date().toISOString(),
-          wa_owner_sid: waOwnerSid,
-          wa_customer_sid: waCustomerSid,
         })
         .eq("id", order.id);
 
@@ -259,15 +207,6 @@ reservedOk = true;
 
     return NextResponse.json({ ok: true, orderId: order.id, pdfPublicUrl, wa_debug: __waDebug });
   } catch (e: any) {
-    // rollback: se avevamo riservato le casse e poi qualcosa è fallito, le rimettiamo disponibili
-    // NB: via RPC (come reserve_products) per evitare problemi di permessi/RLS
-    try {
-      if (reservedOk) {
-        const { error: unErr } = await supabase.rpc("unreserve_products", { p_product_ids: productIds });
-        if (unErr) throw unErr;
-      }
-    } catch {}
-
     return NextResponse.json({ error: e.message ?? "Errore server" }, { status: 500 });
   }
 }

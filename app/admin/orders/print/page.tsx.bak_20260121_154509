@@ -331,7 +331,7 @@ export default function OrdersPrintPage() {
             <div className="text-sm text-gray-600">Nessun ordine nel periodo selezionato.</div>
           )}
         </div>
-      ) : (
+      ) : ( : (
         <div className="space-y-4">
           {productView.map((p) => (
             <div key={p.productId} className="rounded-2xl border bg-white p-4">

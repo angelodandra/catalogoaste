@@ -419,20 +419,6 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
             Cancella da X a Y
           </button>
 
-
-          <button
-            type="button"
-            className="rounded-lg border bg-white px-4 py-2 font-semibold disabled:opacity-60"
-            disabled={loading || !fromDate || !toDate}
-            onClick={() => {
-              const qs = new URLSearchParams({ from: fromDate, to: toDate });
-              window.open(`/api/admin/orders/prep-pdf-bulk?${qs.toString()}`, "_blank");
-            }}
-          >
-            Stampa preparazione cumulativa
-          </button>
-
-
           <button
             type="button"
             className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 font-bold text-red-700 disabled:opacity-60"
@@ -482,13 +468,6 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
                 >
                   Annulla ordine
                 </button>
-<a
-  href={`/api/admin/orders/prep-pdf?orderId=${o.id}`}
-  target="_blank"
-  className="rounded-lg border bg-white px-3 py-1 text-sm font-semibold hover:bg-gray-50"
->
-  🖨️ Stampa preparazione
-</a>
 
                 <button
                   type="button"

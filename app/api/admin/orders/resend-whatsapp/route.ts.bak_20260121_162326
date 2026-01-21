@@ -52,34 +52,14 @@ export async function POST(req: Request) {
       mediaUrl: pdfPublicUrl,
     });
 
-    // salva SID (match per destinatario)
-    const successes = ((result as any)?.successes ?? []) as { sid: string; to: string }[];
-
-    const norm = (n: string) => {
-      const v = String(n || "").trim();
-      if (!v) return "";
-      if (v.startsWith("whatsapp:")) return v;
-      if (v.startsWith("+")) return `whatsapp:${v}`;
-      return `whatsapp:+${v}`;
-    };
-
-    const wantOwner = norm(ownerPhone);
-    const wantCustomer = norm(order.customer_phone);
-
-    const waOwnerSid = successes.find((x) => String(x.to) === wantOwner)?.sid ?? null;
-    const waCustomerSid = successes.find((x) => String(x.to) === wantCustomer)?.sid ?? null;
-
-    const ok = (result.ok ?? 0) > 0 && (result.failed ?? 0) === 0;
+    const ok = result.ok > 0 && result.failed === 0;
 
     // 4) aggiorna stato WA su orders
     await supabase
       .from("orders")
       .update({
         wa_status: ok ? "sent" : "failed",
-        wa_error: ok ? null : ((result as any).failures?.[0] ?? "invio fallito"),
-        wa_owner_sid: waOwnerSid,
-        wa_customer_sid: waCustomerSid,
-        wa_last_attempt_at: new Date().toISOString(),
+        wa_error: ok ? null : (result.failures?.[0] ?? "invio fallito"),
       })
       .eq("id", orderId);
 

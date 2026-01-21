@@ -37,9 +37,6 @@ function normalizePhone(raw: string) {
 export async function POST(req: Request) {
   const supabase = supabaseServer();
 
-
-    // rollback scope (serve anche nel catch finale)
-    let productIds: string[] = [];
   try {
     const __waDebug: any = { step: "start" };
     const body = await req.json();
@@ -89,7 +86,9 @@ export async function POST(req: Request) {
     const ownerPhoneN = normalizePhone(ownerPhone);
 
     const appBaseUrl = process.env.APP_BASE_URL || "http://127.0.0.1:3000";
-    productIds = items.map((i) => i.productId);
+    const productIds = items.map((i) => i.productId);
+
+    
     let reservedOk = false;
 // 1) crea ordine (usa dati customers)
     const { data: order, error: oErr } = await supabase
@@ -201,9 +200,6 @@ reservedOk = true;
     let waOk = false;
     let waError: string | null = null;
 
-    let waOwnerSid: string | null = null;
-    let waCustomerSid: string | null = null;
-
     try {
       const r = await sendWhatsAppOrder({
         toPhones: [ownerPhoneN || ownerPhone.trim()],
@@ -211,8 +207,6 @@ reservedOk = true;
         mediaUrl: pdfPublicUrl,
       });
 
-
-      waOwnerSid = (r as any)?.successes?.[0]?.sid ?? null;
       waOk = (r.ok ?? 0) > 0;
       if (!waOk) waError = r.failures?.[0] ?? "WhatsApp send failed";
     } catch (e: any) {
@@ -231,13 +225,11 @@ reservedOk = true;
         `💶 *Totale:* € ${total.toFixed(2)}\n` +
         (pdfPublicUrl ? `📄 PDF: ${pdfPublicUrl}\n` : ``);
 
-      const rCust = await sendWhatsAppOrder({
+      await sendWhatsAppOrder({
         toPhones: [customerPhoneN],
         body: waTextCustomer,
         mediaUrl: null,
       });
-
-      waCustomerSid = (rCust as any)?.successes?.[0]?.sid ?? null;
     } catch {}
 
     // 8) salva stato WA su DB (best-effort)
@@ -248,8 +240,6 @@ reservedOk = true;
           wa_status: waOk ? "sent" : "failed",
           wa_error: waOk ? null : waError,
           wa_last_attempt_at: new Date().toISOString(),
-          wa_owner_sid: waOwnerSid,
-          wa_customer_sid: waCustomerSid,
         })
         .eq("id", order.id);
 

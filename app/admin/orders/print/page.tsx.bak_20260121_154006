@@ -187,6 +187,7 @@ export default function OrdersPrintPage() {
       }
     }
 
+    # fix python -> ts: non toccare, lo riscrivo sotto con string replace
     
     const arr = Object.values(gm).map((g) => {
       const boxesArr = Object.values(g.boxes).sort((a, b) => Number(a.box) - Number(b.box));
@@ -331,7 +332,7 @@ export default function OrdersPrintPage() {
             <div className="text-sm text-gray-600">Nessun ordine nel periodo selezionato.</div>
           )}
         </div>
-      ) : (
+      ) : ( : (
         <div className="space-y-4">
           {productView.map((p) => (
             <div key={p.productId} className="rounded-2xl border bg-white p-4">
