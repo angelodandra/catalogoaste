@@ -50,7 +50,7 @@ export default function AdminOrdersPage() {
     setMsg("");
 
     try {
-      const { data, error } = await supabaseBrowser()
+      const { data, error } = await supabaseBrowser
         .from("orders")
         .select("id,catalog_id,customer_name,customer_phone,status,created_at,wa_status,wa_error,wa_last_attempt_at")
         .order("created_at", { ascending: false })
@@ -68,7 +68,7 @@ export default function AdminOrdersPage() {
         if (!phones.length) {
           setCustomerByPhone({});
         } else {
-          const { data: custs, error: cErr } = await supabaseBrowser()
+          const { data: custs, error: cErr } = await supabaseBrowser
             .from("customers")
             .select("phone, company")
             .in("phone", phones);
@@ -95,7 +95,7 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
   async function loadItems(orderId: string) {
     setLoading(true);
     try {
-      const { data, error } = await supabaseBrowser()
+      const { data, error } = await supabaseBrowser
         .from("order_items")
         .select("qty, products(id, progressive_number, box_number, image_path, is_sold, price_eur)")
         .eq("order_id", orderId);

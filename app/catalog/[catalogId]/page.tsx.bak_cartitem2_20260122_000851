@@ -82,7 +82,7 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
       .subscribe();
 
     return () => {
-      supabaseBrowser.removeChannel(ch);
+      supabaseBrowser().removeChannel(ch);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalogId]);

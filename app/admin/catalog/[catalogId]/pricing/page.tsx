@@ -24,7 +24,7 @@ export default function PricingPage(props: { params: Promise<{ catalogId: string
 
   async function load() {
     setMsg("");
-    const { data, error } = await supabaseBrowser
+    const { data, error } = await supabaseBrowser()
       .from("products")
       .select("id,progressive_number,box_number,image_path,is_published,price_eur")
       .eq("catalog_id", catalogId)

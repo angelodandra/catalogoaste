@@ -33,7 +33,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       const email = (session.user?.email || "").toLowerCase();
       if (allow.length > 0 && !allow.includes(email)) {
-        await supabase().auth.signOut();
+        await supabase.auth.signOut();
         alert("Email non autorizzata per Admin");
         router.replace("/admin/login");
         return;

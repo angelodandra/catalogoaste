@@ -60,7 +60,7 @@ export default function OrdersPrintPage() {
       setErr("");
 
       try {
-        let q = supabaseBrowser()
+        let q = supabaseBrowser
           .from("orders")
           .select("id,customer_name,customer_phone,created_at")
           .order("created_at", { ascending: true })
@@ -84,7 +84,7 @@ export default function OrdersPrintPage() {
           return;
         }
 
-        const { data: iData, error: iErr } = await supabaseBrowser()
+        const { data: iData, error: iErr } = await supabaseBrowser
           .from("order_items")
           .select("order_id,qty,products(id,box_number,image_path,price_eur,image_path)")
           .in("order_id", orderIds);
@@ -102,7 +102,7 @@ export default function OrdersPrintPage() {
           if (!phones.length) {
             setCustomerByPhone({});
           } else {
-            const { data: custs, error: cErr } = await supabaseBrowser()
+            const { data: custs, error: cErr } = await supabaseBrowser
               .from("customers")
               .select("phone, company")
               .in("phone", phones);

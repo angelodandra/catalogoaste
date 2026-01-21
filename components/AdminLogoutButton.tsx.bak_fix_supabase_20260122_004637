@@ -8,7 +8,7 @@ export default function AdminLogoutButton() {
   const supabase = supabaseBrowser;
 
   async function logout() {
-    await supabaseBrowser().auth.signOut();
+    await supabase.auth.signOut();
     router.replace("/admin/login");
   }
 

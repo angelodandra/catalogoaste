@@ -42,7 +42,7 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
   }, [cart, catalogId, cartReady]);
 
   async function load() {
-    const { data, error } = await supabaseBrowser
+    const { data, error } = await supabaseBrowser()
       .from("products")
       .select("id, progressive_number, box_number, image_path, is_sold, is_published, price_eur")
       .eq("catalog_id", catalogId)
@@ -68,7 +68,7 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
     load();
 
     // realtime: se cambia is_sold o price/publish, aggiorna
-    const ch = supabaseBrowser
+    const ch = supabaseBrowser()
       .channel(`products-${catalogId}`)
       .on(
         "postgres_changes",
@@ -81,7 +81,7 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
       .subscribe();
 
     return () => {
-      supabaseBrowser.removeChannel(ch);
+      supabaseBrowser().removeChannel(ch);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalogId]);

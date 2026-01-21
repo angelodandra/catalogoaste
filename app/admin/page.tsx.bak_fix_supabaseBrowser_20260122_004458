@@ -18,7 +18,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
 
   async function load() {
-    const { data, error } = await supabaseBrowser()
+    const { data, error } = await supabaseBrowser
       .from("catalogs")
       .select("id,title,is_active,owner_phone,created_at")
       .order("created_at", { ascending: false });

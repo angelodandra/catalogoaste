@@ -13,7 +13,7 @@ export default function AdminLoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase().auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data }) => {
       if (data.session) router.replace("/admin");
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -23,7 +23,7 @@ export default function AdminLoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await supabase().auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
@@ -38,7 +38,7 @@ export default function AdminLoginPage() {
   }
 
   async function signOut() {
-    await supabase().auth.signOut();
+    await supabase.auth.signOut();
     alert("Logout ok");
   }
 
