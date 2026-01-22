@@ -8,7 +8,10 @@ export async function GET() {
   const service = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
   return NextResponse.json({
-    ok: true,
+    
+    hasAppBaseUrl: !!process.env.APP_BASE_URL,
+    appBaseUrl: process.env.APP_BASE_URL || null,
+ok: true,
     hasSupabaseUrl: !!supabaseUrl,
     supabaseUrlStart: supabaseUrl ? supabaseUrl.slice(0, 24) + "..." : null,
     hasAnonKey: !!anon,
