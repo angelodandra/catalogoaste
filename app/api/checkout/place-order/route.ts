@@ -234,7 +234,7 @@ reservedOk = true;
       const rCust = await sendWhatsAppOrder({
         toPhones: [customerPhoneN],
         body: waTextCustomer,
-        mediaUrl: null,
+        mediaUrl: pdfPublicUrl,
       });
 
       waCustomerSid = (rCust as any)?.successes?.[0]?.sid ?? null;
