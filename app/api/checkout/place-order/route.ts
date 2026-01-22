@@ -89,7 +89,7 @@ export async function POST(req: Request) {
     }
     const ownerPhoneN = normalizePhone(ownerPhone);
 
-    const appBaseUrl = process.env.APP_BASE_URL || "http://127.0.0.1:3000";
+    const appBaseUrl = process.env.APP_BASE_URL || new URL(req.url).origin;
     productIds = items.map((i) => i.productId);
 // 1) crea ordine (usa dati customers)
     const { data: order, error: oErr } = await supabase

@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     const ownerPhone = process.env.OWNER_PHONE || "";
     if (!ownerPhone) return NextResponse.json({ error: "OWNER_PHONE non configurato" }, { status: 500 });
 
-    const appBaseUrl = process.env.APP_BASE_URL || "http://127.0.0.1:3000";
+    const appBaseUrl = process.env.APP_BASE_URL || new URL(req.url).origin;
 
     // 2) rigenera PDF (usa gli item attuali dell'ordine)
     let pdfPublicUrl: string | null = null;
