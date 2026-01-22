@@ -9,7 +9,9 @@ export async function GET() {
 
   return NextResponse.json({
     
-    hasAppBaseUrl: !!process.env.APP_BASE_URL,
+    
+    port: process.env.PORT || null,
+hasAppBaseUrl: !!process.env.APP_BASE_URL,
     appBaseUrl: process.env.APP_BASE_URL || null,
 ok: true,
     hasSupabaseUrl: !!supabaseUrl,
