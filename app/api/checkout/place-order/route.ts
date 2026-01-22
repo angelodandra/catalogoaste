@@ -90,6 +90,7 @@ export async function POST(req: Request) {
     const ownerPhoneN = normalizePhone(ownerPhone);
 
     const appBaseUrl = process.env.APP_BASE_URL || new URL(req.url).origin;
+
     productIds = items.map((i) => i.productId);
 // 1) crea ordine (usa dati customers)
     const { data: order, error: oErr } = await supabase
@@ -105,6 +106,9 @@ export async function POST(req: Request) {
       .single();
 
     if (oErr) throw oErr;
+
+    const pdfLink = `${appBaseUrl}/o/${order.id}`;
+
 
     // 2) blocca prodotti (atomic)
     
@@ -193,7 +197,7 @@ reservedOk = true;
       `🧾 Ordine: ${String(order.id).slice(0, 8)}…\n\n` +
       `📦 *Casse:*\n${lines.join("\n")}\n\n` +
       `💶 *Totale:* € ${total.toFixed(2)}\n` +
-      (pdfPublicUrl ? `📄 PDF in allegato\n` : `📄 PDF: non disponibile\n`);
+      (pdfPublicUrl ? `📄 PDF: ${pdfLink}\n` : `📄 PDF: non disponibile\n`);
 
     __waDebug.step = "before_whatsapp";
 
@@ -229,7 +233,7 @@ reservedOk = true;
         `👤 Cliente: ${customerName}\n` +
         `📦 *Casse:*\n${lines.join("\n")}\n\n` +
         `💶 *Totale:* € ${total.toFixed(2)}\n` +
-        (pdfPublicUrl ? `📄 PDF: ${pdfPublicUrl}\n` : ``);
+        (pdfPublicUrl ? `📄 PDF: ${pdfLink}\n` : ``);
 
       const rCust = await sendWhatsAppOrder({
         toPhones: [customerPhoneN],
