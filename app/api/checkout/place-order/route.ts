@@ -139,7 +139,7 @@ reservedOk = true;
     // 5) genera PDF
     let pdfPublicUrl: string | null = null;
     try {
-      const res = await fetch("http://127.0.0.1:3000/api/orders/generate-pdf", {
+      const res = await fetch(`${appBaseUrl}/api/orders/generate-pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId: order.id }),
