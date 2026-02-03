@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     // 2) Righe ordine + prodotti (✅ include price_eur)
     const { data: items, error: iErr } = await supabase
       .from("order_items")
-      .select("qty, products(id, progressive_number, box_number, image_path, price_eur)")
+      .select("qty, products(id, progressive_number, box_number, image_path, price_eur, weight_kg)")
       .eq("order_id", orderId);
 
     if (iErr) throw iErr;
@@ -108,7 +108,7 @@ export async function POST(req: Request) {
 
       // Riga principale: Prog, Cassa, Prezzo
       doc.fontSize(11).text(
-        `Prog: ${p.progressive_number}   |   Cassa: ${p.box_number}   |   Prezzo: ${eur(price)}`,
+        `Prog: ${p.progressive_number}   |   Cassa: ${p.box_number}   |   Peso: ${p.weight_kg !== null && p.weight_kg !== undefined ? (Number(p.weight_kg).toFixed(2) + " kg") : "—"}   |   Prezzo: ${eur(price)}`,
         xText,
         yStart
       );

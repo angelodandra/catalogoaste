@@ -24,14 +24,20 @@ export async function sendWhatsAppOrder(opts: SendOpts) {
 
   const client = Twilio(sid, token);
 
+  const mu = (opts.mediaUrl || "").trim();
+  const isLocalUrl = !mu || mu.includes("localhost") || mu.includes("127.0.0.1") || mu.includes(".local");
+
+  const body = !isLocalUrl && mu ? opts.body : mu ? `\n\nPDF: ` : opts.body;
+
+
   const results = await Promise.allSettled(
     opts.toPhones
       .filter(Boolean)
       .map((p) =>
         client.messages.create({
-          from,
+          from: toWhatsApp(from),
           to: toWhatsApp(p),
-          body: opts.body,
+          body: body,
           ...(opts.mediaUrl ? { mediaUrl: [opts.mediaUrl] } : {}),
         })
       )

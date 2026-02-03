@@ -1,15 +1,13 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import { Grid3x3, type ProductUI } from "@/components/Grid3x3";
-import PaginationBar from "@/components/PaginationBar";
 import AccessGate from "@/components/AccessGate";
 import FloatingCartButton from "@/components/FloatingCartButton";
 import CartDrawer from "@/components/CartDrawer";
 import { useRouter } from "next/navigation";
 
-const PER_PAGE = 9;
 
 type CartItem = { product: ProductUI; qty: number };
 export default function CatalogClientPage(props: { params: Promise<{ catalogId: string }> }) {
@@ -17,7 +15,6 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
   const router = useRouter();
 
   const [products, setProducts] = useState<ProductUI[]>([]);
-  const [page, setPage] = useState(1);
   const [cartOpen, setCartOpen] = useState(false);
 
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -44,7 +41,7 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
   async function load() {
     const { data, error } = await supabaseBrowser()
       .from("products")
-      .select("id, progressive_number, box_number, image_path, is_sold, is_published, price_eur")
+      .select("id, progressive_number, box_number, image_path, is_sold, is_published, price_eur, weight_kg")
       .eq("catalog_id", catalogId)
       .eq("is_published", true) // ✅ clienti vedono SOLO pubblicati
       .order("progressive_number", { ascending: true });
@@ -59,6 +56,7 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
       image_url: `${base}/storage/v1/object/public/catalog-images/${p.image_path}`,
       is_sold: p.is_sold,
       price_eur: p.price_eur,
+      weight_kg: p.weight_kg ?? null,
     }));
 
     setProducts(mapped);
@@ -85,12 +83,6 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalogId]);
-
-  const totalPages = Math.max(1, Math.ceil(products.length / PER_PAGE));
-  const view = useMemo(() => {
-    const start = (page - 1) * PER_PAGE;
-    return products.slice(start, start + PER_PAGE);
-  }, [products, page]);
 
   function addToCart(p: ProductUI) {
     if (!authorized) return;
@@ -137,40 +129,17 @@ return (
       </div>
 
       <div className="mt-4">
-        <Grid3x3 products={view} onAdd={addToCart} showPrices={authorized} canAdd={authorized} />
-      
-        <PaginationBar page={page} totalPages={totalPages} onPageChange={setPage} />
+        <Grid3x3 products={products} onAdd={addToCart} showPrices={authorized} canAdd={authorized} />
 
         <FloatingCartButton count={cartCount} onOpen={() => setCartOpen(true)} />
 </div>
-
-      <div className="mt-4 flex items-center justify-between">
-        <button
-          className="rounded-md border px-3 py-1 disabled:opacity-50"
-          disabled={page <= 1}
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
-        >
-          ←
-        </button>
-
-        <div className="text-sm">
-          Pagina {page} / {totalPages}
-        </div>
-
-        <button
-          className="rounded-md border px-3 py-1 disabled:opacity-50"
-          disabled={page >= totalPages}
-          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-        >
-          →
-        </button>
-      </div>
 
       <CartDrawer
         open={cartOpen}
         onClose={() => setCartOpen(false)}
         items={cart.map((x) => x.product)}
-        setQty={setQty}        onRemove={(id: string) => remove(id)}
+        setQty={setQty}
+        onRemove={(id: string) => remove(id)}
         onCheckout={() => authorized && router.push(`/checkout/${catalogId}`)}
       />
     </div>

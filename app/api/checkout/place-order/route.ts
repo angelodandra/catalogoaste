@@ -168,7 +168,7 @@ reservedOk = true;
     // 6) prepara testo WhatsApp
     const { data: orderItems, error: oiErr } = await supabase
       .from("order_items")
-      .select("qty, products(id, box_number, progressive_number, price_eur)")
+      .select("qty, products(id, box_number, progressive_number, price_eur, weight_kg)")
       .eq("order_id", order.id);
 
     if (oiErr) throw oiErr;
@@ -185,7 +185,9 @@ reservedOk = true;
 
       const box = p?.box_number ?? "?";
       const prog = p?.progressive_number ?? "?";
-      lines.push(`• Cassa ${box} (Prog ${prog}) — ${eur(price)} × ${qty}`);
+      const w = p?.weight_kg === null || p?.weight_kg === undefined ? null : Number(p.weight_kg);
+      const wTxt = w !== null && Number.isFinite(w) ? ` ≈ ${w.toFixed(2)} kg` : "";
+      lines.push(`• Cassa ${box} (Prog ${prog})${wTxt} — ${eur(price)} × ${qty}`);
     }
 
     const brand = process.env.BRAND_NAME || "F.lli D'Andrassi";

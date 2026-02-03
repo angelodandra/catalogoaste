@@ -9,6 +9,7 @@ export type ProductUI = {
   image_url: string;
   is_sold: boolean;
   price_eur?: number | null;
+  weight_kg?: number | null;
 };
 
 export function Grid3x3(props: {
@@ -24,9 +25,9 @@ export function Grid3x3(props: {
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-3 sm:grid-cols-3 lg:grid-cols-3">
         {props.products.map((p) => (
-          <div key={p.id} className="rounded-2xl border bg-white p-3 shadow-sm">
+          <div key={p.id} className="rounded-2xl border bg-white p-2 sm:p-3 shadow-sm">
             <div className="relative">
               <button
                 type="button"
@@ -34,7 +35,7 @@ export function Grid3x3(props: {
                 onClick={() => setPreview(p)}
                 aria-label="Apri foto"
               >
-                <img src={p.image_url} className="h-56 w-full rounded-xl object-cover" />
+                <img src={p.image_url} className="h-32 sm:h-44 lg:h-56 w-full rounded-xl object-cover" />
               </button>
 
               <div className="absolute left-2 top-2 rounded-md bg-black/70 px-2 py-1 text-xs font-bold text-white">
@@ -48,6 +49,12 @@ export function Grid3x3(props: {
               {showPrices && p.price_eur !== undefined && p.price_eur !== null && (
                 <div className="absolute right-2 bottom-2 rounded-md bg-black/80 px-2 py-1 text-xs font-bold text-white">
                   € {Number(p.price_eur).toFixed(2)}
+                </div>
+              )}
+
+              {p.weight_kg !== undefined && p.weight_kg !== null && (
+                <div className="absolute right-2 top-2 rounded-md bg-white/90 px-2 py-1 text-xs font-semibold">
+                  ≈ {Number(p.weight_kg).toFixed(2)} kg
                 </div>
               )}
 

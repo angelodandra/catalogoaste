@@ -53,7 +53,7 @@ export async function GET(req: Request) {
 
     const { data: items, error: iErr } = await supabase
       .from("order_items")
-      .select("qty, products(id, box_number, image_path, price_eur)")
+      .select("qty, products(id, box_number, image_path, price_eur, weight_kg)")
       .eq("order_id", orderId);
     if (iErr) throw iErr;
 
@@ -114,6 +114,7 @@ export async function GET(req: Request) {
         box: safeStr(p?.box_number ?? "?"),
         image_path: safeStr(p?.image_path ?? ""),
         price: p?.price_eur ?? null,
+        weight: p?.weight_kg ?? null,
       };
     });
 
@@ -156,7 +157,7 @@ export async function GET(req: Request) {
       doc.font("Helvetica-Bold").fontSize(14).text(`Cassa ${r.box}`, xText, y + 6);
 
       doc.font("Helvetica").fontSize(10).fillColor("gray");
-      doc.text(`Quantità: ${r.qty}`, xText, y + 30);
+      doc.text(`Quantità: ${r.qty}` + (r.weight !== null && r.weight !== undefined ? `   |   Peso: ≈ ${Number(r.weight).toFixed(2)} kg` : ""), xText, y + 30);
 
       const price = r.price === null || r.price === undefined ? null : Number(r.price);
       const subtotal = price !== null && Number.isFinite(price) ? price * r.qty : null;

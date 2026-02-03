@@ -3,7 +3,15 @@ import { supabaseServer } from "@/lib/supabaseServer";
 
 export const runtime = "nodejs";
 
-type Row = { productId: string; price: number | null };
+type Row = { productId: string; price: number | null; weightKg?: number | null };
+
+function toNumberOrNull(v: any): number | null {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim().replace(",", ".");
+  if (s === "") return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
 
 export async function POST(req: Request) {
   try {
@@ -17,14 +25,12 @@ export async function POST(req: Request) {
     for (const r of rows as Row[]) {
       if (!r.productId) continue;
 
-      const price =
-        r.price === null || r.price === undefined || Number.isNaN(Number(r.price))
-          ? null
-          : Number(r.price);
+      const price = toNumberOrNull(r.price);
+      const weight = toNumberOrNull((r as any).weightKg);
 
       const { error } = await supabase
         .from("products")
-        .update({ price_eur: price })
+        .update({ price_eur: price, weight_kg: weight })
         .eq("id", r.productId)
         .eq("catalog_id", catalogId);
 

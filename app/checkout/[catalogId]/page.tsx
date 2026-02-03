@@ -44,6 +44,7 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
 
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string>("");
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -103,14 +104,16 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
       localStorage.removeItem(`cart:${catalogId}`);
       setItems([]);
 
-      setMsg("Ordine inviato ✅");
-
-      if (json.pdfPublicUrl) {
+      setMsg("Ordine inviato ✅");      if (json.pdfPublicUrl) {
+        const url = String(json.pdfPublicUrl);
+        setPdfUrl(url);
         setMsg(`Ordine inviato ✅ — PDF pronto`);
-        // apre il pdf in una nuova tab
-        window.open(json.pdfPublicUrl, "_blank");
+        // Tentativo automatico (se il browser lo consente)
+        try { window.location.href = url; } catch {}
+      } else {
+        setPdfUrl(null);
       }
-    } finally {
+} finally {
       setLoading(false);
     }
   }
@@ -175,6 +178,12 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
                           ? `€ ${Number(it.product.price_eur).toFixed(2)}`
                           : "—"}
                       </div>
+                      <div className="mt-1 text-sm">
+                        Peso:{" "}
+                        {it.product.weight_kg !== null && it.product.weight_kg !== undefined
+                          ? `≈ ${Number(it.product.weight_kg).toFixed(2)} kg`
+                          : "—"}
+                      </div>
                       <div className="mt-1 text-sm">Quantità: {it.qty}</div>
                     </div>
                   </div>
@@ -193,6 +202,17 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
             </button>
 
             {msg && <div className="mt-3 text-sm">{msg}</div>}
+
+            {pdfUrl && (
+              <a
+                href={pdfUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-block rounded-lg border bg-white px-4 py-2 text-sm font-semibold"
+              >
+                Apri PDF
+              </a>
+            )}
           </div>
         </>
       )}

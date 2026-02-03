@@ -2,6 +2,7 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
+import { useRouter } from "next/navigation";
 
 type Row = {
   id: string;
@@ -10,23 +11,34 @@ type Row = {
   image_path: string;
   is_published: boolean;
   price_eur: number | null;
+  weight_kg: number | null;
 };
 
 export default function PricingPage(props: { params: Promise<{ catalogId: string }> }) {
   const { catalogId } = use(props.params);
+  const router = useRouter();
 
   const [rows, setRows] = useState<Row[]>([]);
   const [prices, setPrices] = useState<Record<string, string>>({});
+  const [weights, setWeights] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string>("");
 
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
-  async function load() {
-    setMsg("");
+  function nowHHMM() {
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+async function load(silent: boolean = false) {
+    if (!silent) setMsg("Carico…");
     const { data, error } = await supabaseBrowser()
       .from("products")
-      .select("id,progressive_number,box_number,image_path,is_published,price_eur")
+      .select("id,progressive_number,box_number,image_path,is_published,price_eur,weight_kg")
       .eq("catalog_id", catalogId)
       .order("progressive_number", { ascending: true });
 
@@ -38,29 +50,43 @@ export default function PricingPage(props: { params: Promise<{ catalogId: string
     const list = (data as any[]) || [];
     setRows(list);
 
-    const map: Record<string, string> = {};
+    const priceMap: Record<string, string> = {};
+    const weightMap: Record<string, string> = {};
+
     for (const r of list) {
-      map[r.id] = r.price_eur === null || r.price_eur === undefined ? "" : String(r.price_eur);
+      priceMap[r.id] = r.price_eur == null ? "" : String(r.price_eur);
+      weightMap[r.id] = r.weight_kg == null ? "" : String(r.weight_kg);
     }
-    setPrices(map);
+
+    setPrices(priceMap);
+    setWeights(weightMap);
   }
 
   useEffect(() => {
     load();
   }, [catalogId]);
 
-  const notPricedCount = useMemo(() => {
-    return rows.filter((r) => (prices[r.id] ?? "").trim() === "").length;
-  }, [rows, prices]);
+  const notPricedCount = useMemo(
+    () => rows.filter((r) => (prices[r.id] ?? "").trim() === "").length,
+    [rows, prices]
+  );
 
   async function saveAll() {
     setSaving(true);
-    setMsg("");
+    setMsg("Salvo…");
     try {
       const payload = rows.map((r) => {
-        const v = (prices[r.id] ?? "").trim().replace(",", ".");
-        const n = v === "" ? null : Number(v);
-        return { productId: r.id, price: n !== null && Number.isFinite(n) ? n : null };
+        const pv = (prices[r.id] ?? "").trim().replace(",", ".");
+        const price = pv === "" ? null : Number(pv);
+
+        const wv = (weights[r.id] ?? "").trim().replace(",", ".");
+        const weightKg = wv === "" ? null : Number(wv);
+
+        return {
+          productId: r.id,
+          price: Number.isFinite(price) ? price : null,
+          weightKg: Number.isFinite(weightKg) ? weightKg : null,
+        };
       });
 
       const res = await fetch("/api/admin/save-prices", {
@@ -75,8 +101,10 @@ export default function PricingPage(props: { params: Promise<{ catalogId: string
         return;
       }
 
-      setMsg("Prezzi salvati ✅");
-      await load();
+      setMsg("Prezzi e pesi salvati ✅");
+      await load(true);
+    } catch (e: any) {
+      setMsg(String(e?.message || e || 'Errore'));
     } finally {
       setSaving(false);
     }
@@ -84,7 +112,7 @@ export default function PricingPage(props: { params: Promise<{ catalogId: string
 
   async function publish() {
     setSaving(true);
-    setMsg("");
+    setMsg("Pubblico…");
     try {
       await saveAll();
 
@@ -100,8 +128,10 @@ export default function PricingPage(props: { params: Promise<{ catalogId: string
         return;
       }
 
-      setMsg("Catalogo pubblicato ✅ (solo prodotti con prezzo)");
-      await load();
+      setMsg("Catalogo pubblicato ✅");
+      await load(true);
+    } catch (e: any) {
+      setMsg(String(e?.message || e || 'Errore'));
     } finally {
       setSaving(false);
     }
@@ -109,82 +139,70 @@ export default function PricingPage(props: { params: Promise<{ catalogId: string
 
   return (
     <div className="mx-auto max-w-6xl p-4">
-      <div className="mb-6 flex justify-center">
-        <img src="/logo.jpg" alt="Logo azienda" className="h-20 w-auto" />
-      </div>
-
-      {/* NAV */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex gap-2">
-          <a className="rounded-lg border bg-white px-4 py-2 font-semibold" href="/admin">
-            ← Torna in Admin
-          </a>
-          <a
-            className="rounded-lg border bg-white px-4 py-2 font-semibold"
-            href={`/catalog/${catalogId}`}
-            target="_blank"
-            rel="noreferrer"
+      {/* TORNA_ADMIN_STICKY */}
+      <div className="sticky top-0 z-20 -mx-4 mb-3 border-b bg-white/95 px-4 py-2 backdrop-blur">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold"
+            onClick={() => router.push('/admin')}
           >
-            Apri catalogo cliente
-          </a>
-        </div>
-
-        <div className="text-sm text-gray-600">
-          Prodotti senza prezzo: <b>{notPricedCount}</b>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold">Prezzi catalogo</h1>
-
-        <div className="flex gap-2">
-          <button className="rounded-lg border bg-white px-4 py-2 font-semibold" disabled={saving} onClick={load}>
-            Aggiorna
+            ← Admin
           </button>
-          <button className="rounded-lg bg-black px-4 py-2 font-semibold text-white disabled:opacity-60" disabled={saving} onClick={saveAll}>
-            Salva prezzi
-          </button>
-          <button className="rounded-lg bg-green-600 px-4 py-2 font-semibold text-white disabled:opacity-60" disabled={saving} onClick={publish}>
-            Conferma pubblicazione
+          <button
+            type="button"
+            className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold"
+            onClick={() => router.push(`/admin/catalog/${catalogId}/listino`)}
+          >
+            ← Catalogo (Admin)
           </button>
         </div>
       </div>
 
-      {msg && <div className="mt-2 text-sm">{msg}</div>}
+      <h1 className="mb-4 text-2xl font-bold">Prezzi catalogo</h1>
 
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {rows.map((r) => {
-          const imgUrl = `${base}/storage/v1/object/public/catalog-images/${r.image_path}`;
-          const val = prices[r.id] ?? "";
-          return (
-            <div key={r.id} className="rounded-2xl border bg-white p-3 shadow-sm">
-              <div className="relative">
-                <img src={imgUrl} className="h-48 w-full rounded-xl object-cover" />
-                <div className="absolute left-2 top-2 rounded-md bg-black/70 px-2 py-1 text-xs font-bold text-white">
-                  {r.progressive_number}
-                </div>
-                <div className="absolute left-2 bottom-2 rounded-md bg-white/90 px-2 py-1 text-xs font-semibold">
-                  Cassa {r.box_number}
-                </div>
-                {r.is_published && (
-                  <div className="absolute right-2 top-2 rounded-md bg-green-600 px-2 py-1 text-xs font-bold text-white">
-                    PUBBLICATO
-                  </div>
-                )}
-              </div>
+      <div className="mb-3 text-sm text-gray-600">
+        Prodotti senza prezzo: <b>{notPricedCount}</b>
+      </div>
 
-              <div className="mt-3">
-                <label className="text-sm font-semibold">Prezzo €</label>
-                <input
-                  value={val}
-                  onChange={(e) => setPrices((p) => ({ ...p, [r.id]: e.target.value }))}
-                  placeholder="es. 35"
-                  className="mt-1 w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black/30"
-                />
-              </div>
+      <div className="mb-4 flex gap-2">
+        <button onClick={() => load()} disabled={saving} className="rounded border px-4 py-2">
+          Aggiorna
+        </button>
+        <button onClick={saveAll} disabled={saving} className="rounded bg-black px-4 py-2 text-white">
+          Salva
+        </button>
+        <button onClick={publish} disabled={saving} className="rounded bg-green-600 px-4 py-2 text-white">
+          Pubblica
+        </button>
+      </div>
+
+      {msg && <div className="mb-2 text-sm">{msg}</div>}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {rows.map((r) => (
+          <div key={r.id} className="rounded-xl border bg-white p-3">
+            <img
+              src={`${base}/storage/v1/object/public/catalog-images/${r.image_path}`}
+              className="h-40 w-full rounded-lg object-cover"
+            />
+
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <input
+                placeholder="Prezzo €"
+                value={prices[r.id] ?? ""}
+                onChange={(e) => setPrices((p) => ({ ...p, [r.id]: e.target.value }))}
+                className="rounded border px-3 py-2"
+              />
+              <input
+                placeholder="Peso kg"
+                value={weights[r.id] ?? ""}
+                onChange={(e) => setWeights((p) => ({ ...p, [r.id]: e.target.value }))}
+                className="rounded border px-3 py-2"
+              />
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
     </div>
   );

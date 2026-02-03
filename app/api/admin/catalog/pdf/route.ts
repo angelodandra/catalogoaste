@@ -66,7 +66,7 @@ export async function GET(req: Request) {
 
     const { data: prods, error: pErr } = await supabase
       .from("products")
-      .select("id, catalog_id, box_number, progressive_number, image_path, is_sold, price_eur")
+      .select("id, catalog_id, box_number, progressive_number, image_path, is_sold, price_eur, weight_kg")
       .eq("catalog_id", catalogId)
       .order("progressive_number", { ascending: true });
 
@@ -170,7 +170,9 @@ export async function GET(req: Request) {
           doc.fillColor("black");
         }
 
-        doc.fontSize(12).font("Helvetica-Bold").text(`Cassa ${box} — ${p.price_eur !== null && p.price_eur !== undefined ? `€ ${Number(p.price_eur).toFixed(2)}` : "—"}`, x + pad, y + cellH - 18, { width: cellW - pad * 2 });
+        const weightTxt = p.weight_kg !== null && p.weight_kg !== undefined ? ` — ≈ ${Number(p.weight_kg).toFixed(2)} kg` : "";
+        const priceTxt = p.price_eur !== null && p.price_eur !== undefined ? `€ ${Number(p.price_eur).toFixed(2)}` : "—";
+        doc.fontSize(12).font("Helvetica-Bold").text(`Cassa ${box}${weightTxt} — ${priceTxt}`, x + pad, y + cellH - 18, { width: cellW - pad * 2 });
         doc.font("Helvetica");
       }
     });
