@@ -12,6 +12,7 @@ type Row = {
   is_published: boolean;
   price_eur: number | null;
   weight_kg: number | null;
+  peso_interno_kg: number | null;
 };
 
 export default function PricingPage(props: { params: Promise<{ catalogId: string }> }) {
@@ -24,6 +25,42 @@ export default function PricingPage(props: { params: Promise<{ catalogId: string
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string>("");
+
+  const [pesiFile, setPesiFile] = useState<File | null>(null);
+  const [pesiPreview, setPesiPreview] = useState<any | null>(null);
+  const [pesiLoading, setPesiLoading] = useState(false);
+
+  async function runImportPesi(mode: "preview" | "apply") {
+    if (!pesiFile) {
+      setMsg("Seleziona un file pesi (CSV o XLSX)");
+      return;
+    }
+    setPesiLoading(true);
+    setMsg(mode === "preview" ? "Anteprima import pesi…" : "Applico pesi…");
+    try {
+      const fd = new FormData();
+      fd.append("catalogId", catalogId);
+      fd.append("mode", mode);
+      fd.append("file", pesiFile);
+
+      const res = await fetch("/api/admin/import-pesi", { method: "POST", body: fd });
+      const json = await res.json();
+
+      if (!res.ok) {
+        setMsg(json.error || "Errore import pesi");
+        setPesiPreview(null);
+        return;
+      }
+
+      setPesiPreview(json);
+      setMsg(mode === "preview" ? "Anteprima pronta ✅" : `Pesi applicati ✅ (aggiornati: ${json.updatedCount ?? 0})`);
+      await load(true);
+    } catch (e: any) {
+      setMsg(String(e?.message || e || "Errore"));
+    } finally {
+      setPesiLoading(false);
+    }
+  }
 
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
@@ -38,7 +75,7 @@ async function load(silent: boolean = false) {
     if (!silent) setMsg("Carico…");
     const { data, error } = await supabaseBrowser()
       .from("products")
-      .select("id,progressive_number,box_number,image_path,is_published,price_eur,weight_kg")
+      .select("id,progressive_number,box_number,image_path,is_published,price_eur,weight_kg,peso_interno_kg")
       .eq("catalog_id", catalogId)
       .order("progressive_number", { ascending: true });
 
@@ -165,6 +202,49 @@ async function load(silent: boolean = false) {
         Prodotti senza prezzo: <b>{notPricedCount}</b>
       </div>
 
+      <div className="mb-4 rounded-xl border bg-white p-3">
+        <div className="text-sm font-semibold">Import pesi interni (CSV/XLSX)</div>
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            type="file"
+            accept=".csv,.xlsx,.xls"
+            onChange={(e) => setPesiFile(e.target.files?.[0] ?? null)}
+            className="w-full rounded border px-3 py-2"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => runImportPesi("preview")}
+              disabled={pesiLoading || !pesiFile}
+              className="rounded border bg-white px-4 py-2 font-semibold disabled:opacity-60"
+            >
+              Anteprima
+            </button>
+            <button
+              type="button"
+              onClick={() => runImportPesi("apply")}
+              disabled={pesiLoading || !pesiFile}
+              className="rounded bg-black px-4 py-2 font-semibold text-white disabled:opacity-60"
+            >
+              Applica
+            </button>
+          </div>
+        </div>
+
+        {pesiPreview?.totals && (
+          <div className="mt-2 text-sm text-gray-700">
+            <div>
+              Letti: <b>{pesiPreview.totals.rowsRead ?? "—"}</b> — Validi:{" "}
+              <b>{pesiPreview.totals.validUnique ?? "—"}</b> — Match: <b>{pesiPreview.totals.matched ?? "—"}</b>
+            </div>
+            <div>
+              Non trovati: <b>{pesiPreview.totals.notFound ?? "—"}</b> — Invalidi: <b>{pesiPreview.totals.invalid ?? "—"}</b>{" "}
+              — Mancanti nel file: <b>{pesiPreview.totals.missingInFile ?? "—"}</b>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="mb-4 flex gap-2">
         <button onClick={() => load()} disabled={saving} className="rounded border px-4 py-2">
           Aggiorna
@@ -186,6 +266,11 @@ async function load(silent: boolean = false) {
               src={`${base}/storage/v1/object/public/catalog-images/${r.image_path}`}
               className="h-40 w-full rounded-lg object-cover"
             />
+
+            <div className="mt-2 text-sm text-gray-700">
+              <div><b>Cassa</b>: {r.progressive_number}{r.box_number ? ` (${r.box_number})` : ""}</div>
+              <div><b>Peso interno</b>: {r.peso_interno_kg == null ? "—" : `${r.peso_interno_kg} kg`}</div>
+            </div>
 
             <div className="mt-2 grid grid-cols-2 gap-2">
               <input

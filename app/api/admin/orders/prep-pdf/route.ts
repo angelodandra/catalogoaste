@@ -53,7 +53,7 @@ export async function GET(req: Request) {
 
     const { data: items, error: iErr } = await supabase
       .from("order_items")
-      .select("qty, products(id, box_number, image_path, price_eur, weight_kg)")
+      .select("qty, products(id, box_number, image_path, price_eur, weight_kg, peso_interno_kg)")
       .eq("order_id", orderId);
     if (iErr) throw iErr;
 
@@ -115,6 +115,7 @@ export async function GET(req: Request) {
         image_path: safeStr(p?.image_path ?? ""),
         price: p?.price_eur ?? null,
         weight: p?.weight_kg ?? null,
+        internal_weight: (p as any)?.peso_interno_kg ?? null,
       };
     });
 
@@ -157,7 +158,10 @@ export async function GET(req: Request) {
       doc.font("Helvetica-Bold").fontSize(14).text(`Cassa ${r.box}`, xText, y + 6);
 
       doc.font("Helvetica").fontSize(10).fillColor("gray");
-      doc.text(`Quantità: ${r.qty}` + (r.weight !== null && r.weight !== undefined ? `   |   Peso: ≈ ${Number(r.weight).toFixed(2)} kg` : ""), xText, y + 30);
+      const wInt = (r as any).internal_weight;
+      const pesoIntTxt = wInt !== null && wInt !== undefined ? `   |   Peso int: ${Number(wInt).toFixed(2)} kg` : "";
+      const pesoPubTxt = r.weight !== null && r.weight !== undefined ? `   |   Peso: ≈ ${Number(r.weight).toFixed(2)} kg` : "";
+      doc.text(`Quantità: ${r.qty}` + pesoIntTxt + pesoPubTxt, xText, y + 30);
 
       const price = r.price === null || r.price === undefined ? null : Number(r.price);
       const subtotal = price !== null && Number.isFinite(price) ? price * r.qty : null;

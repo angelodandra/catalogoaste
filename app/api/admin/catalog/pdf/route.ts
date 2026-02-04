@@ -66,7 +66,7 @@ export async function GET(req: Request) {
 
     const { data: prods, error: pErr } = await supabase
       .from("products")
-      .select("id, catalog_id, box_number, progressive_number, image_path, is_sold, price_eur, weight_kg")
+      .select("id, catalog_id, box_number, progressive_number, image_path, is_sold, price_eur, weight_kg, peso_interno_kg")
       .eq("catalog_id", catalogId)
       .order("progressive_number", { ascending: true });
 
@@ -170,9 +170,10 @@ export async function GET(req: Request) {
           doc.fillColor("black");
         }
 
+        const internalTxt = p.peso_interno_kg !== null && p.peso_interno_kg !== undefined ? ` — int ${Number(p.peso_interno_kg).toFixed(2)} kg` : "";
         const weightTxt = p.weight_kg !== null && p.weight_kg !== undefined ? ` — ≈ ${Number(p.weight_kg).toFixed(2)} kg` : "";
         const priceTxt = p.price_eur !== null && p.price_eur !== undefined ? `€ ${Number(p.price_eur).toFixed(2)}` : "—";
-        doc.fontSize(12).font("Helvetica-Bold").text(`Cassa ${box}${weightTxt} — ${priceTxt}`, x + pad, y + cellH - 18, { width: cellW - pad * 2 });
+        doc.fontSize(12).font("Helvetica-Bold").text(`Cassa ${box}${internalTxt}${weightTxt} — ${priceTxt}`, x + pad, y + cellH - 27, { width: cellW - pad * 2 });
         doc.font("Helvetica");
       }
     });
