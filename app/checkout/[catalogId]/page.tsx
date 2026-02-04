@@ -125,7 +125,7 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
       </div>
 
       <div className="flex items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold">Checkout</h1>
+        <h1 className="text-2xl font-bold">Conferma ordine</h1>
         <button
           className="rounded-lg border bg-white px-4 py-2 font-semibold"
           onClick={() => router.push(`/catalog/${catalogId}`)}

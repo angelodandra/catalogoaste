@@ -31,7 +31,7 @@ export default function CartDrawer(props: any) {
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
       {/* panel */}
-      <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-xl">
+      <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-xl flex flex-col">
         <div className="flex items-center justify-between border-b p-4">
           <div>
             <div className="text-lg font-bold">Carrello</div>
@@ -46,7 +46,7 @@ export default function CartDrawer(props: any) {
           </button>
         </div>
 
-        <div className="p-4">
+        <div className="flex-1 overflow-y-auto p-4 pb-28">
           {count === 0 ? (
             <div className="rounded-xl border bg-gray-50 p-4 text-sm text-gray-700">
               Carrello vuoto.
@@ -80,16 +80,20 @@ export default function CartDrawer(props: any) {
                   </button>
                 </div>
               ))}
-
-              <button
-                className="mt-2 w-full rounded-lg bg-black px-4 py-3 text-base font-bold text-white"
-                onClick={onCheckout}
-              >
-                Checkout
-              </button>
             </div>
           )}
         </div>
+
+        {count > 0 && (
+          <div className="sticky bottom-0 border-t bg-white p-4">
+            <button
+              className="w-full rounded-lg bg-black px-4 py-3 text-base font-bold text-white"
+              onClick={onCheckout}
+            >
+              Conferma ordine
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
