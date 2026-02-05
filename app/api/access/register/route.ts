@@ -72,7 +72,9 @@ export async function POST(req: Request) {
           mediaUrl: null,
         });
       }
-    } catch {}
+    } catch (e) {
+      console.error("WHATSAPP ERROR:", e);
+    }
 
     // WhatsApp a TE: nuova richiesta con link Approva/Rifiuta (solo se pending)
     try {
@@ -93,7 +95,9 @@ export async function POST(req: Request) {
           mediaUrl: null,
         });
       }
-    } catch {}
+    } catch (e) {
+      console.error("WHATSAPP ERROR:", e);
+    }
 
     return NextResponse.json({ ok: true, customer: data });
   } catch (e: any) {
