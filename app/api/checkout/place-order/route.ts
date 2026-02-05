@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { sendWhatsAppOrder, sendWhatsAppTemplate } from "@/lib/twilio";
+import { sendWhatsAppOrder } from "@/lib/twilio";
 
 export const runtime = "nodejs";
 
@@ -231,20 +231,24 @@ reservedOk = true;
     try {
       const tpl = (process.env.TWILIO_TEMPLATE_CONFERMA_ORDINE || "").trim();
       const fallback =
-        `✅ ${brand} — Conferma ordine\n` +
-        `🕒 ${nowIT()}\n` +
-        `👤 Cliente: ${customerName}\n` +
-        `💶 Totale: € ${total.toFixed(2)}\n` +
-        (pdfPublicUrl ? `📄 PDF: ${pdfLink}\n` : ``);
+        `✅ ${brand} — Conferma ordine
+` +
+        `🕒 ${nowIT()}
+` +
+        `👤 Cliente: ${customerName}
+` +
+        `💶 Totale: € ${total.toFixed(2)}
+` +
+        (pdfPublicUrl ? `📄 PDF: ${pdfLink}
+` : ``);
 
       if (tpl) {
-        await sendWhatsAppTemplate({
-          toPhone: customerPhoneN,
-          templateSid: tpl,
-          variables: {}, // niente variabili per ora
-          fallbackText: fallback,
+        const rCust = await sendWhatsAppOrder({
+          toPhones: [customerPhoneN],
+          contentSid: tpl,
+          contentVariables: {}, // per ora senza variabili
         });
-        waCustomerSid = "template";
+        waCustomerSid = (rCust as any)?.successes?.[0]?.sid ?? null;
       } else {
         const rCust = await sendWhatsAppOrder({
           toPhones: [customerPhoneN],
@@ -253,7 +257,9 @@ reservedOk = true;
         });
         waCustomerSid = (rCust as any)?.successes?.[0]?.sid ?? null;
       }
-    } catch {}
+    } catch (e: any) {
+      console.error("WA CUSTOMER ERROR:", e?.message ?? String(e));
+    }
 
     // 8) salva stato WA su DB (best-effort)
     try {
