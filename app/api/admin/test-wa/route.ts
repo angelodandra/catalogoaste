@@ -9,6 +9,8 @@ export async function POST(req: Request) {
 
     const to = (body.to as string) || "";
     const msg = (body.msg as string) || (body.body as string) || "Test WA ✅";
+    const contentSid = (body.contentSid as string) || null;
+    const contentVariables = (body.contentVariables as any) || null;
     const mediaUrl = (body.mediaUrl as string) || null;
 
     if (!to) return NextResponse.json({ ok: false, error: "Manca 'to'" }, { status: 400 });
@@ -17,6 +19,8 @@ export async function POST(req: Request) {
       toPhones: [to],
       body: msg,
       mediaUrl,
+      contentSid,
+      contentVariables,
     });
 
     return NextResponse.json({ ok: true, result });
