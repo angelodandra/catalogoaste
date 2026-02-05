@@ -248,6 +248,12 @@ reservedOk = true;
           contentSid: tpl,
           contentVariables: {}, // per ora senza variabili
         });
+
+        const ok = (rCust as any)?.ok ?? 0;
+        if (!ok) {
+          console.error("WA CUSTOMER FAILURES:", (rCust as any)?.failures ?? []);
+        }
+
         waCustomerSid = (rCust as any)?.successes?.[0]?.sid ?? null;
       } else {
         const rCust = await sendWhatsAppOrder({
