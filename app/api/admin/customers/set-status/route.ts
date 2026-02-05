@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { sendWhatsAppOrder } from "@/lib/twilio";
 
 export const runtime = "nodejs";
 
@@ -20,6 +21,24 @@ export async function POST(req: Request) {
       .single();
 
     if (error) throw error;
+
+    // WhatsApp feedback al cliente (quando approvi/rimuovi dal pannello admin)
+    try {
+      const phone = (data?.phone || "").toString().trim();
+      if (phone) {
+        if (status === "active") {
+          const body =
+            `✅ Autorizzazione APPROVATA\n\n` +
+            `Ora puoi vedere i prezzi e fare ordini.`;
+          await sendWhatsAppOrder({ toPhones: [phone], body, mediaUrl: null });
+        } else if (status === "revoked") {
+          const body =
+            `❌ Autorizzazione REVOCATA\n\n` +
+            `Per informazioni contattaci direttamente.`;
+          await sendWhatsAppOrder({ toPhones: [phone], body, mediaUrl: null });
+        }
+      }
+    } catch {}
 
     return NextResponse.json({ ok: true, customer: data });
   } catch (e: any) {
