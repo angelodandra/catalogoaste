@@ -9,7 +9,7 @@ export async function POST(req: Request) {
 
     const to = (body.to as string) || "";
     const msg = (body.msg as string) || (body.body as string) || "Test WA ✅";
-    const contentSid = (body.contentSid as string) || null;
+    const contentSid = ((body.contentSid as string) || undefined) as string | undefined;
     const contentVariables = (body.contentVariables as any) || null;
     const mediaUrl = (body.mediaUrl as string) || null;
 
