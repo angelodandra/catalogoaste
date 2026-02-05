@@ -2,8 +2,10 @@ import Twilio from "twilio";
 
 type SendOpts = {
   toPhones: string[];
-  body: string;
+  body?: string;
   mediaUrl?: string | null;
+  contentSid?: string;
+  contentVariables?: Record<string, string>;
 };
 
 function toWhatsApp(n: string) {
@@ -36,6 +38,15 @@ export async function sendWhatsAppOrder(opts: SendOpts) {
       .filter(Boolean)
       .map((p) =>
         client.messages.create({
+          ...(opts.contentSid
+            ? {
+                contentSid: opts.contentSid,
+                contentVariables: opts.contentVariables
+                  ? JSON.stringify(opts.contentVariables)
+                  : undefined,
+              }
+            : { body }),
+
           from: toWhatsApp(from),
           to: toWhatsApp(p),
           body: body,
