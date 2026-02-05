@@ -8,9 +8,10 @@ type SendOpts = {
 
 function toWhatsApp(n: string) {
   if (!n) return "";
-  if (n.startsWith("whatsapp:")) return n;
-  if (n.startsWith("+")) return `whatsapp:${n}`;
-  return `whatsapp:+${n}`;
+  // normalizza: rimuove eventuali prefissi duplicati
+  const clean = n.replace(/^whatsapp:/g, "");
+  if (clean.startsWith("+")) return `whatsapp:${clean}`;
+  return `whatsapp:+${clean}`;
 }
 
 export async function sendWhatsAppOrder(opts: SendOpts) {
