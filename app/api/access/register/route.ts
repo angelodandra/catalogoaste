@@ -54,6 +54,8 @@ export async function POST(req: Request) {
     if (error) throw error;
 
     const ownerPhone = process.env.OWNER_PHONE || "";
+    console.log("REGISTER DEBUG → ownerPhone:", ownerPhone);
+
     const baseUrl = process.env.APP_BASE_URL || "http://127.0.0.1:3000";
 
     console.log("REGISTER DEBUG", { phone: p, ownerPhone, status: data.status, hasSecret: !!process.env.ACCESS_APPROVE_SECRET, baseUrl });
