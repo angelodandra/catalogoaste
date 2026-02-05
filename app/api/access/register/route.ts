@@ -56,6 +56,8 @@ export async function POST(req: Request) {
     const ownerPhone = process.env.OWNER_PHONE || "";
     const baseUrl = process.env.APP_BASE_URL || "http://127.0.0.1:3000";
 
+    console.log("REGISTER DEBUG", { phone: p, ownerPhone, status: data.status, hasSecret: !!process.env.ACCESS_APPROVE_SECRET, baseUrl });
+
     // WhatsApp al cliente: richiesta ricevuta (solo se pending)
     try {
       if (data.status === "pending") {
