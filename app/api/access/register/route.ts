@@ -82,18 +82,15 @@ export async function POST(req: Request) {
       console.error("WHATSAPP ERROR:", e);
     }
 
-    // WhatsApp a TE: nuova richiesta con link Approva/Rifiuta (solo se pending)
+    // WhatsApp a TE (ADMIN): nuova richiesta (no link, così non dipende da ACCESS_APPROVE_SECRET)
     try {
       if (ownerPhone && data.status === "pending") {
-        const { approveUrl, rejectUrl } = buildLinks(baseUrl, p);
-
         const body =
           `🆕 RICHIESTA CLIENTE (PENDING)\n` +
           `Nome: ${n}\n` +
           `Azienda: ${c}\n` +
           `Tel: ${p}\n\n` +
-          `✅ APPROVA (24h):\n${approveUrl}\n\n` +
-          `❌ NON ACCETTARE:\n${rejectUrl}\n`;
+          `➡️ Apri Admin → Clienti per autorizzare.`;
 
         await sendWhatsAppOrder({
           toPhones: [ownerPhone],
