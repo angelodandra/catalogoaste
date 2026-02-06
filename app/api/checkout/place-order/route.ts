@@ -116,10 +116,18 @@ const { data: rData, error: rErr } = await supabase.rpc("reserve_products", { p_
 
 
 if (rErr) {
+  try { await supabase.from("orders").update({ status: "failed" }).eq("id", order.id); } catch {}
+
+  const code = String((rErr as any)?.code || "");
   const msg = String((rErr as any)?.message || "").toLowerCase();
 
-  // ✅ Idempotenza: se il prodotto è già venduto, restituisci l'ordine COMPLETATO esistente
-  if (msg.includes("already sold")) {
+  // UUID non valido (es. placeholder)
+  if (code == "22P02" || msg.includes("invalid input syntax for type uuid")) {
+    return NextResponse.json({ error: "ProductId non valido (UUID)." }, { status: 400 });
+  }
+
+  // Idempotenza: se già venduto, ritorna l'ordine già completato (se esiste)
+  if (code == "P0001" || msg.includes("already sold")) {
     const { data: existing, error: exErr } = await supabase
       .from("order_items")
       .select("order_id, orders!inner(status)")
@@ -127,37 +135,18 @@ if (rErr) {
       .eq("orders.status", "completed")
       .limit(1);
 
-    if (!exErr && existing && existing.length) {
-      try { await supabase.from("orders").update({ status: "failed" }).eq("id", order.id); } catch {}
-      const existingOrderId = existing[0].order_id;
-      return NextResponse.json(
-        {
-          ok: true,
-          note: "Ordine già ricevuto (idempotente)",
-          orderId: existingOrderId,
-          pdfPublicUrl: `${appBaseUrl}/o/${existingOrderId}`,
-        },
-        { status: 200 }
-      );
+    if (!exErr && existing && (existing as any[]).length > 0) {
+      const existingOrderId = (existing as any[])[0].order_id;
+      return NextResponse.json({
+        ok: true,
+        orderId: existingOrderId,
+        pdfPublicUrl: `${appBaseUrl}/o/${existingOrderId}`,
+        note: "Ordine già ricevuto (idempotente)"
+      });
     }
   }
 
-  // reserve fallita: segno ordine failed (best-effort) e torno 409
-  try {
-    await supabase.from("orders").update({ status: "failed" }).eq("id", order.id);
-  } catch {}
-  return NextResponse.json(
-    {
-      error: "Uno o più prodotti sono già esauriti. Riprova.",
-      debug:
-        process.env.NODE_ENV !== "production"
-          ? {
-              rpc_error: rErr,
-            }
-          : undefined,
-    },
-    { status: 409 }
-  );
+  return NextResponse.json({ error: "Uno o più prodotti sono già esauriti. Riprova." }, { status: 409 });
 }
 
 reservedOk = true;
