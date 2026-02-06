@@ -111,12 +111,8 @@ export async function POST(req: Request) {
     const pdfLink = `${appBaseUrl}/o/${order.id}`;
 
     // 2) blocca prodotti (atomic)
-    
-console.log("RESERVE RPC productIds:", productIds);
 
 const { data: rData, error: rErr } = await supabase.rpc("reserve_products", { p_product_ids: productIds });
-console.log("RESERVE RPC result:", rData);
-console.log("RESERVE RPC error:", rErr);
 
 
 if (rErr) {
