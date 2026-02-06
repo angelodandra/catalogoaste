@@ -10,7 +10,6 @@ type SendOpts = {
 
 function toWhatsApp(n: string) {
   if (!n) return "";
-  // normalizza: rimuove eventuali prefissi duplicati
   const clean = n.replace(/^whatsapp:/g, "");
   if (clean.startsWith("+")) return `whatsapp:${clean}`;
   return `whatsapp:+${clean}`;
@@ -20,39 +19,49 @@ export async function sendWhatsAppOrder(opts: SendOpts) {
   const sid = process.env.TWILIO_ACCOUNT_SID || "";
   const token = process.env.TWILIO_AUTH_TOKEN || "";
   const from = process.env.TWILIO_WHATSAPP_FROM || "";
+  const messagingServiceSid = (process.env.TWILIO_MESSAGING_SERVICE_SID || "").trim();
 
-  if (!sid || !token || !from) {
+  if (!sid || !token || (!from && !messagingServiceSid)) {
     throw new Error("Twilio non configurato correttamente");
   }
 
   const client = Twilio(sid, token);
 
   const mu = (opts.mediaUrl || "").trim();
-  const isLocalUrl = !mu || mu.includes("localhost") || mu.includes("127.0.0.1") || mu.includes(".local");
+  const isLocalUrl =
+    !mu || mu.includes("localhost") || mu.includes("127.0.0.1") || mu.includes(".local");
 
-  const body = !isLocalUrl && mu ? opts.body : mu ? `\n\nPDF: ` : opts.body;
-
+  const bodyText =
+    (opts.body || "") +
+    (mu && isLocalUrl ? "\n\nPDF: (non disponibile)" : "");
 
   const results = await Promise.allSettled(
     opts.toPhones
       .filter(Boolean)
-      .map((p) =>
-        client.messages.create({
-          ...(opts.contentSid
-            ? {
-                contentSid: opts.contentSid,
-                contentVariables: opts.contentVariables
-                  ? JSON.stringify(opts.contentVariables)
-                  : undefined,
-              }
-            : { body }),
-
-          from: toWhatsApp(from),
+      .map((p) => {
+        const base: any = {
           to: toWhatsApp(p),
-          body: body,
-          ...(opts.mediaUrl ? { mediaUrl: [opts.mediaUrl] } : {}),
-        })
-      )
+          ...(messagingServiceSid
+            ? { messagingServiceSid }
+            : { from: toWhatsApp(from) }),
+        };
+
+        if (opts.contentSid) {
+          return client.messages.create({
+            ...base,
+            contentSid: opts.contentSid,
+            ...(opts.contentVariables
+              ? { contentVariables: JSON.stringify(opts.contentVariables) }
+              : {}),
+          });
+        }
+
+        return client.messages.create({
+          ...base,
+          body: bodyText,
+          ...(opts.mediaUrl && !isLocalUrl ? { mediaUrl: [opts.mediaUrl] } : {}),
+        });
+      })
   );
 
   const successes = results
