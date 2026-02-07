@@ -34,7 +34,7 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch("/api/access/me");
+        const r = await fetch("/api/access/me", { credentials: "include" });
         const j = await r.json();
         if (r.ok && j?.customer) setCustomer(j.customer);
       } catch {}
@@ -64,7 +64,7 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
         items: items.map((it) => ({ productId: it.product.id, qty: it.qty })),
       };
 
-      const res = await fetch("/api/checkout/place-order", {
+      const res = await fetch("/api/checkout/place-order", { credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
