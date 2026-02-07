@@ -37,6 +37,15 @@ export function signAccess(params: { phone: string; exp: string; action: "approv
 }
 
 export function verifyAccess(params: { phone: string; exp: string; action: "approve" | "revoke" | "login"; sig: string }) {
-  const expected = signAccess({ phone: params.phone, exp: params.exp, action: params.action });
-  return crypto.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(params.sig, "hex"));
+  try {
+    const expected = signAccess({ phone: params.phone, exp: params.exp, action: params.action });
+
+    if (typeof params.sig !== "string" || params.sig.length !== expected.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(params.sig, "hex"));
+  } catch {
+    return false;
+  }
 }
