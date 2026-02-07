@@ -126,17 +126,21 @@ if (rErr) {
     return NextResponse.json({ error: "ProductId non valido (UUID)." }, { status: 400 });
   }
 
-  // Idempotenza: se già venduto, ritorna l'ordine già completato (se esiste)
+  // Idempotenza DEFINITIVA:
+  // stesso prodotto + stesso catalogo + stesso cliente → ULTIMO ordine
   if (code == "P0001" || msg.includes("already sold")) {
     const { data: existing, error: exErr } = await supabase
-      .from("order_items")
-      .select("order_id, orders!inner(status)")
-      .in("product_id", productIds)
-      .eq("orders.status", "completed")
+      .from("orders")
+      .select("id, created_at, status, order_items!inner(product_id)")
+      .eq("status", "completed")
+      .eq("catalog_id", catalogId)
+      .eq("customer_phone", customerPhoneN)
+      .in("order_items.product_id", productIds)
+      .order("created_at", { ascending: false })
       .limit(1);
 
-    if (!exErr && existing && (existing as any[]).length > 0) {
-      const existingOrderId = (existing as any[])[0].order_id;
+    if (!exErr && existing && existing.length > 0) {
+      const existingOrderId = existing[0].id;
       return NextResponse.json({
         ok: true,
         orderId: existingOrderId,
@@ -144,6 +148,8 @@ if (rErr) {
         note: "Ordine già ricevuto (idempotente)"
       });
     }
+
+    return NextResponse.json({ error: "Prodotto già venduto." }, { status: 409 });
   }
 
   return NextResponse.json({ error: "Uno o più prodotti sono già esauriti. Riprova." }, { status: 409 });
