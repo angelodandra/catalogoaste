@@ -54,7 +54,7 @@ export async function GET(req: Request) {
     res.cookies.set("customer_phone", phone, {
       httpOnly: true,
       sameSite: "lax",
-      secure: false,
+      secure: true,
       path: "/",
       maxAge: 60 * 60 * 24 * 30,
     });
@@ -74,7 +74,7 @@ export async function GET(req: Request) {
   res.cookies.set("customer_phone", phone, {
     httpOnly: true,
     sameSite: "lax",
-    secure: false,
+    secure: true,
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
   });
