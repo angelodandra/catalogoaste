@@ -20,9 +20,11 @@ export async function POST(req: Request) {
     const exp = String(Math.floor(Date.now() / 1000) + 7 * 24 * 3600);
     const sigApprove = signAccess({ action: "approve", phone: p, exp });
     const sigRevoke = signAccess({ action: "revoke", phone: p, exp });
+    const sigLogin = signAccess({ action: "login", phone: p, exp });
 
     const approveUrl = `${base}/api/access/approve?phone=${encodeURIComponent(p)}&exp=${exp}&sig=${sigApprove}`;
     const revokeUrl = `${base}/api/access/revoke?phone=${encodeURIComponent(p)}&exp=${exp}&sig=${sigRevoke}`;
+    const loginUrl = `${base}/api/access/login?phone=${encodeURIComponent(p)}&exp=${exp}&sig=${sigLogin}`;
 
     // 1) Messaggio info (senza link)
     await sendWhatsAppOrder({
@@ -43,13 +45,22 @@ export async function POST(req: Request) {
     });
 
     // 3) Messaggio SOLO LINK revoke
+
+    // 4) Messaggio SOLO LINK login
+    await sendWhatsAppOrder({
+      toPhones: [ownerPhone],
+      body: loginUrl,
+      mediaUrl: null,
+    });
+
+
     await sendWhatsAppOrder({
       toPhones: [ownerPhone],
       body: revokeUrl,
       mediaUrl: null,
     });
 
-    return NextResponse.json({ ok: true, approveUrl, revokeUrl });
+    return NextResponse.json({ ok: true, approveUrl, revokeUrl, loginUrl });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Errore server" }, { status: 500 });
   }
