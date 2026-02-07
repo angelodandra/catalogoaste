@@ -24,7 +24,7 @@ export async function POST(req: Request) {
 
     const approveUrl = `${base}/api/access/approve?phone=${encodeURIComponent(p)}&exp=${exp}&sig=${sigApprove}`;
     const revokeUrl = `${base}/api/access/revoke?phone=${encodeURIComponent(p)}&exp=${exp}&sig=${sigRevoke}`;
-    const loginUrl = `${base}/api/access/login?phone=${encodeURIComponent(p)}&exp=${exp}&sig=${sigLogin}`;
+    const loginUrl = `${base}/entra?phone=${encodeURIComponent(p)}&exp=${exp}&sig=${sigLogin}`;
 
     // 1) Messaggio info (senza link)
     await sendWhatsAppOrder({
