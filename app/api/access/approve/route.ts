@@ -20,7 +20,13 @@ export async function GET(req: Request) {
     if (!ok) return new Response("Link non valido o scaduto", { status: 401 });
 
     // opzionale: verifica scadenza
-    const expMs = Date.parse(exp);
+    // exp può arrivare come UNIX seconds (es. 1771057503) oppure come data ISO
+    let expMs = Number(exp);
+    if (Number.isFinite(expMs) && expMs > 0) {
+      if (expMs < 10_000_000_000) expMs = expMs * 1000; // seconds -> ms
+    } else {
+      expMs = Date.parse(exp);
+    }
     if (!Number.isFinite(expMs) || expMs < Date.now()) {
       return new Response("Link scaduto", { status: 410 });
     }
