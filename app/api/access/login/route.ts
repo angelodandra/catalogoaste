@@ -19,6 +19,13 @@ export async function GET(req: Request) {
   const rawPhone = url.searchParams.get("phone") || "";
   const phone = normalizePhone(rawPhone);
 
+  // redirect post-login (solo path relativo “sicuro”)
+  const nextRaw = url.searchParams.get("next") || "/";
+  const nextPath =
+    nextRaw.startsWith("/catalog/") || nextRaw.startsWith("/checkout/") || nextRaw == "/"
+      ? nextRaw
+      : "/";
+
   // firma (modalità prod)
   const exp = url.searchParams.get("exp") || "";
   const sig = url.searchParams.get("sig") || "";
@@ -50,7 +57,7 @@ export async function GET(req: Request) {
     if (error || !data) return new NextResponse("Cliente non trovato", { status: 404 });
     if (data.status !== "active") return new NextResponse("Cliente non attivo", { status: 403 });
 
-    const res = NextResponse.redirect(new URL("/", origin));
+    const res = NextResponse.redirect(new URL(nextPath, origin));
     res.cookies.set("customer_phone", phone, {
       httpOnly: true,
       sameSite: "lax",
@@ -76,7 +83,7 @@ export async function GET(req: Request) {
     return new NextResponse("Link scaduto", { status: 410 });
   }
 
-  const res = NextResponse.redirect(new URL("/", origin));
+  const res = NextResponse.redirect(new URL(nextPath, origin));
   res.cookies.set("customer_phone", phone, {
     httpOnly: true,
     sameSite: "lax",
