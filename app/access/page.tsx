@@ -1,11 +1,9 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
 
-function AccessInner() {
-  const sp = useSearchParams();
-  const nextParam = sp.get("next") || "/";
+export default function AccessPage({ searchParams }: { searchParams: { next?: string } }) {
+  const nextParam = searchParams?.next || "/";
 
   const nextSafe = useMemo(() => {
     if (nextParam === "/") return "/";
@@ -21,25 +19,49 @@ function AccessInner() {
   async function go() {
     setMsg("");
     const p = phone.trim();
-    if (!p) return setMsg("Inserisci il tuo numero per confermare.");
+    if (!p) {
+      setMsg("Inserisci il numero di cellulare.");
+      return;
+    }
 
     setLoading(true);
     try {
-      const r = await fetch("/api/access/request", {
+      const r = await fetch("/api/access/check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: p }),
       });
 
       const j = await r.json().catch(() => ({} as any));
-      const loginUrl = j?.loginUrl || j?.approveUrl?.replace("/approve?", "/login?");
-      if (!r.ok || !loginUrl) return setMsg(j?.error || "Errore richiesta accesso");
 
-      const u = new URL(String(loginUrl), window.location.origin);
-      u.searchParams.set("next", nextSafe);
-      window.location.href = u.toString();
-    } catch (e: any) {
-      setMsg(e?.message || "Errore di rete");
+      const exists = !!(j?.exists ?? j?.customerExists ?? j?.found ?? j?.ok);
+      const status = String(j?.status || j?.customer?.status || "").toLowerCase();
+
+      if (!exists) {
+        window.location.href = `/register?phone=${encodeURIComponent(p)}&next=${encodeURIComponent(nextSafe)}`;
+        return;
+      }
+
+      if (status && status !== "active") {
+        setMsg("Numero registrato ma non ancora autorizzato. Attendi conferma.");
+        return;
+      }
+
+      const s = await fetch("/api/access/send-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: p, next: nextSafe }),
+      });
+
+      const sj = await s.json().catch(() => ({} as any));
+      if (!s.ok) {
+        setMsg(sj?.error || "Errore invio link. Riprova.");
+        return;
+      }
+
+      setMsg("Ti abbiamo inviato un link su WhatsApp. Aprilo per entrare ✅");
+    } catch {
+      window.location.href = `/register?phone=${encodeURIComponent(p)}&next=${encodeURIComponent(nextSafe)}`;
     } finally {
       setLoading(false);
     }
@@ -47,42 +69,34 @@ function AccessInner() {
 
   return (
     <div className="mx-auto max-w-md p-4">
-      <div className="mb-4 flex justify-center">
-        <img src="/logo.jpg" alt="Logo" className="h-16 w-auto" />
+      <div className="mb-6 flex justify-center">
+        <img src="/logo.jpg" alt="Logo" className="h-20 w-auto" />
       </div>
 
       <div className="rounded-2xl border bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-bold text-center">Conferma accesso</h1>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Inserisci il tuo numero per entrare.
-        </p>
+        <h1 className="text-xl font-bold">Accedi</h1>
+        <p className="mt-2 text-sm text-gray-600">Inserisci il tuo numero per continuare.</p>
 
-        <input
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          placeholder="Cellulare (es. 348...)"
-          className="mt-4 w-full rounded-lg border px-4 py-3 text-lg"
-          inputMode="tel"
-        />
+        <div className="mt-4">
+          <input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="Cellulare (es. 348...)"
+            className="w-full rounded-lg border px-4 py-3 text-lg"
+            inputMode="tel"
+          />
+        </div>
 
-        {msg ? <div className="mt-3 text-sm text-red-600">{msg}</div> : null}
+        {msg ? <div className="mt-4 text-sm font-semibold">{msg}</div> : null}
 
         <button
           onClick={go}
           disabled={loading}
           className="mt-4 w-full rounded-xl bg-black px-4 py-3 text-lg font-bold text-white disabled:opacity-50"
         >
-          {loading ? "Attendere…" : "Entra"}
+          {loading ? "Attendere…" : "Continua"}
         </button>
       </div>
     </div>
-  );
-}
-
-export default function AccessPage() {
-  return (
-    <Suspense fallback={<div className="p-4">Caricamento…</div>}>
-      <AccessInner />
-    </Suspense>
   );
 }
