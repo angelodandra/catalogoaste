@@ -12,6 +12,10 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   const url = new URL(req.url);
 
+  const proto = req.headers.get("x-forwarded-proto") || "http";
+  const hostHeader = req.headers.get("host") || url.host;
+  const origin = `${proto}://${hostHeader}`;
+
   const rawPhone = url.searchParams.get("phone") || "";
   const phone = normalizePhone(rawPhone);
 
@@ -46,7 +50,7 @@ export async function GET(req: Request) {
     if (error || !data) return new NextResponse("Cliente non trovato", { status: 404 });
     if (data.status !== "active") return new NextResponse("Cliente non attivo", { status: 403 });
 
-    const res = NextResponse.redirect(new URL("/", url.origin));
+    const res = NextResponse.redirect(new URL("/", origin));
     res.cookies.set("customer_phone", phone, {
       httpOnly: true,
       sameSite: "lax",
@@ -66,7 +70,7 @@ export async function GET(req: Request) {
     return new NextResponse("Link scaduto", { status: 410 });
   }
 
-  const res = NextResponse.redirect(new URL("/", url.origin));
+  const res = NextResponse.redirect(new URL("/", origin));
   res.cookies.set("customer_phone", phone, {
     httpOnly: true,
     sameSite: "lax",

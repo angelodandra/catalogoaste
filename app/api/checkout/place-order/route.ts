@@ -46,7 +46,8 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     const catalogId = body.catalogId as string;
-    const customerPhoneRaw = (body.customerPhone as string) || "";
+    const cookieStore = await cookies();
+    const customerPhoneRaw = cookieStore.get("customer_phone")?.value || "";
     const items = (body.items || []) as Item[];
 
     if (!catalogId || !customerPhoneRaw.trim() || items.length === 0) {
@@ -110,16 +111,49 @@ export async function POST(req: Request) {
     const pdfLink = `${appBaseUrl}/o/${order.id}`;
 
 
-    // 2) blocca prodotti (atomic)
+    // 2) IDEMPOTENZA: verifica prodotto già venduto
+    const { data: existingItems } = await supabase
+      .from("order_items")
+      .select("order_id, orders!inner(id, status)")
+      .in("product_id", productIds)
+      .eq("orders.status", "completed");
+
+    if (existingItems && existingItems.length > 0) {
+      const existingOrderId = existingItems[0].order_id;
+      return NextResponse.json({
+        ok: true,
+        orderId: existingOrderId,
+        pdfPublicUrl: `/o/`,
+        note: "ordine già esistente (idempotente)"
+      });
+    }
+
+// 2) blocca prodotti (atomic)
     
-const { error: rErr } = await supabase.rpc("reserve_products", { p_product_ids: productIds });
+console.log("RESERVE RPC productIds:", productIds);
+
+const { data: rData, error: rErr } = await supabase.rpc("reserve_products", { p_product_ids: productIds });
+console.log("RESERVE RPC result:", rData);
+console.log("RESERVE RPC error:", rErr);
+console.log("RESERVE RPC error:", rErr);
 
 if (rErr) {
   // reserve fallita: segno ordine failed (best-effort) e torno 409
   try {
     await supabase.from("orders").update({ status: "failed" }).eq("id", order.id);
   } catch {}
-  return NextResponse.json({ error: "Uno o più prodotti sono già esauriti. Riprova." }, { status: 409 });
+  return NextResponse.json(
+    {
+      error: "Uno o più prodotti sono già esauriti. Riprova.",
+      debug:
+        process.env.NODE_ENV !== "production"
+          ? {
+              rpc_error: rErr,
+            }
+          : undefined,
+    },
+    { status: 409 }
+  );
 }
 
 reservedOk = true;
@@ -143,11 +177,12 @@ reservedOk = true;
     // 5) genera PDF
     let pdfPublicUrl: string | null = null;
     try {
-      const res = await fetch(`${appBaseUrl}/api/orders/generate-pdf`, {
+      const res = await fetch(new URL("/api/orders/generate-pdf", req.url), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId: order.id }),
       });
+
 
       const raw = await res.text();
       let json: any = null;
