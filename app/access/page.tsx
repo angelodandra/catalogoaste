@@ -47,19 +47,20 @@ export default function AccessPage({ searchParams }: { searchParams: { next?: st
         return;
       }
 
-      const s = await fetch("/api/access/send-login", {
+      const l = await fetch("/api/access/login-direct", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: p, next: nextSafe }),
+        credentials: "include",
+        body: JSON.stringify({ phone: p }),
       });
 
-      const sj = await s.json().catch(() => ({} as any));
-      if (!s.ok) {
-        setMsg(sj?.error || "Errore invio link. Riprova.");
+      const lj = await l.json().catch(() => ({} as any));
+      if (!l.ok || !lj?.ok) {
+        setMsg(lj?.error || "Errore accesso. Riprova.");
         return;
       }
 
-      setMsg("Ti abbiamo inviato un link su WhatsApp. Aprilo per entrare ✅");
+      window.location.href = nextSafe;
     } catch {
       window.location.href = `/register?phone=${encodeURIComponent(p)}&next=${encodeURIComponent(nextSafe)}`;
     } finally {
