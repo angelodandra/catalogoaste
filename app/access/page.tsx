@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-export default function AccessPage() {
+function AccessInner() {
   const sp = useSearchParams();
   const nextParam = sp.get("next") || "/";
 
@@ -76,5 +76,13 @@ export default function AccessPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function AccessPage() {
+  return (
+    <Suspense fallback={<div className="p-4">Caricamento…</div>}>
+      <AccessInner />
+    </Suspense>
   );
 }
