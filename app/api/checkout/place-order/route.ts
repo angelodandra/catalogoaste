@@ -123,7 +123,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         ok: true,
         orderId: existingOrderId,
-        pdfPublicUrl: `/o/`,
+        pdfPublicUrl: `/o/${existingOrderId}`,
         note: "ordine già esistente (idempotente)"
       });
     }
