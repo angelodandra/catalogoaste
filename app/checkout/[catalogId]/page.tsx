@@ -12,35 +12,8 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
   const [items, setItems] = useState<CartItem[]>([]);
   const [ready, setReady] = useState(false);
 
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const [customer, setCustomer] = useState<any>(null);
 
-  // Autofill: salva/recupera dati cliente in locale (così non li reinserisce ogni volta)
-  function getLS(key: string) {
-    try { return (localStorage.getItem(key) || "").trim(); } catch { return ""; }
-  }
-  function setLS(key: string, val: string) {
-    try { localStorage.setItem(key, val); } catch {}
-  }
-
-  useEffect(() => {
-    // prova a recuperare dati salvati
-    const n = getLS("checkout:customerName");
-    const ph = getLS("checkout:customerPhone");
-
-    if (!customerName.trim() && n) setCustomerName(n);
-    if (!customerPhone.trim() && ph) setCustomerPhone(ph);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalogId]);
-
-  useEffect(() => {
-    // salva mentre scrive
-    if (customerName.trim()) setLS("checkout:customerName", customerName.trim());
-  }, [customerName]);
-
-  useEffect(() => {
-    if (customerPhone.trim()) setLS("checkout:customerPhone", customerPhone.trim());
-  }, [customerPhone]);
 
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string>("");
@@ -58,6 +31,16 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
     }
   }, [catalogId]);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/api/access/me");
+        const j = await r.json();
+        if (r.ok && j?.customer) setCustomer(j.customer);
+      } catch {}
+    })();
+  }, []);
+
   const total = useMemo(() => {
     let t = 0;
     for (const it of items) {
@@ -69,10 +52,6 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
 
   async function submit() {
     setMsg("");
-    if (!customerName.trim() || !customerPhone.trim()) {
-      setMsg("Inserisci nome e telefono.");
-      return;
-    }
     if (!items.length) {
       setMsg("Carrello vuoto.");
       return;
@@ -82,8 +61,6 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
     try {
       const payload = {
         catalogId,
-        customerName: customerName.trim(),
-        customerPhone: customerPhone.trim(),
         items: items.map((it) => ({ productId: it.product.id, qty: it.qty })),
       };
 
@@ -139,21 +116,16 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
       ) : (
         <>
           <div className="mt-4 rounded-2xl border bg-white p-4 shadow-sm">
-            <div className="text-sm font-semibold">Dati cliente</div>
-
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <input
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Nome cliente"
-                className="w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black/30"
-              />
-              <input
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="Telefono (es. +39...)"
-                className="w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black/30"
-              />
+            <div className="text-sm font-semibold">Cliente</div>
+            <div className="mt-2 text-sm text-gray-700">
+              {customer ? (
+                <>
+                  <div><b>{customer.name}</b> {customer.company ? `(${customer.company})` : ""}</div>
+                  <div className="font-mono">{customer.phone}</div>
+                </>
+              ) : (
+                <div className="text-gray-600">Caricamento dati cliente…</div>
+              )}
             </div>
           </div>
 
