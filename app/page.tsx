@@ -13,7 +13,7 @@ export default async function HomePage() {
 
   const meRes = await fetch(`${base}/api/access/me`, { cache: "no-store" }).catch(() => null);
   if (!meRes || !meRes.ok) {
-    redirect("/access");
+    redirect("/register");
   }
 
   // 2) se loggato -> catalogo attivo
@@ -28,5 +28,5 @@ export default async function HomePage() {
   const id = data?.[0]?.id as string | undefined;
   if (id) redirect(`/catalog/${id}`);
 
-  redirect("/access");
+  redirect("/register");
 }
