@@ -34,7 +34,11 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch("/api/access/me");
+        const r = await fetch("/api/access/me", { credentials: "include" });
+        if (r.status === 401) {
+          window.location.href = `/access?next=/checkout/${catalogId}`;
+          return;
+        }
         const j = await r.json();
         if (r.ok && j?.customer) setCustomer(j.customer);
       } catch {}
@@ -85,8 +89,6 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
         const url = String(json.pdfPublicUrl);
         setPdfUrl(url);
         setMsg(`Ordine inviato ✅ — PDF pronto`);
-        // Tentativo automatico (se il browser lo consente)
-        try { window.location.href = url; } catch {}
       } else {
         setPdfUrl(null);
       }
