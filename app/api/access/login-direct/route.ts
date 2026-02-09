@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     const res = NextResponse.json({ ok: true });
     res.cookies.set("customer_phone", p, {
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: "none",
       secure: true,
       path: "/",
       maxAge: 60 * 60 * 24 * 30,
