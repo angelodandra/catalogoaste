@@ -26,43 +26,27 @@ export default function AccessPage({ searchParams }: { searchParams: { next?: st
 
     setLoading(true);
     try {
-      const r = await fetch("/api/access/check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: p }),
-      });
-
-      const j = await r.json().catch(() => ({} as any));
-
-      const exists = !!(j?.exists ?? j?.customerExists ?? j?.found ?? j?.ok);
-      const status = String(j?.status || j?.customer?.status || "").toLowerCase();
-
-      if (!exists) {
-        window.location.href = `/register?phone=${encodeURIComponent(p)}&next=${encodeURIComponent(nextSafe)}`;
-        return;
-      }
-
-      if (status && status !== "active") {
-        setMsg("Numero registrato ma non ancora autorizzato. Attendi conferma.");
-        return;
-      }
-
-      const l = await fetch("/api/access/login-direct", {
+      // TENTA LOGIN DIRETTO
+      const r = await fetch("/api/access/login-direct", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ phone: p }),
       });
 
-      const lj = await l.json().catch(() => ({} as any));
-      if (!l.ok || !lj?.ok) {
-        setMsg(lj?.error || "Errore accesso. Riprova.");
+      const j = await r.json().catch(() => ({}));
+
+      if (r.ok && j?.ok) {
+        window.location.href = nextSafe;
         return;
       }
 
-      window.location.href = nextSafe;
+      // QUALSIASI ERRORE → REGISTRAZIONE
+      window.location.href =
+        `/register?phone=${encodeURIComponent(p)}&next=${encodeURIComponent(nextSafe)}`;
     } catch {
-      window.location.href = `/register?phone=${encodeURIComponent(p)}&next=${encodeURIComponent(nextSafe)}`;
+      window.location.href =
+        `/register?phone=${encodeURIComponent(p)}&next=${encodeURIComponent(nextSafe)}`;
     } finally {
       setLoading(false);
     }
@@ -75,25 +59,25 @@ export default function AccessPage({ searchParams }: { searchParams: { next?: st
       </div>
 
       <div className="rounded-2xl border bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-bold">Accedi</h1>
-        <p className="mt-2 text-sm text-gray-600">Inserisci il tuo numero per continuare.</p>
+        <h1 className="text-xl font-bold">Accesso clienti</h1>
+        <p className="mt-2 text-sm text-gray-600">
+          Inserisci il tuo numero di cellulare
+        </p>
 
-        <div className="mt-4">
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="Cellulare (es. 348...)"
-            className="w-full rounded-lg border px-4 py-3 text-lg"
-            inputMode="tel"
-          />
-        </div>
+        <input
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="Cellulare"
+          className="mt-4 w-full rounded-lg border px-4 py-3 text-lg"
+          inputMode="tel"
+        />
 
-        {msg ? <div className="mt-4 text-sm font-semibold">{msg}</div> : null}
+        {msg && <div className="mt-4 text-sm font-semibold">{msg}</div>}
 
         <button
           onClick={go}
           disabled={loading}
-          className="mt-4 w-full rounded-xl bg-black px-4 py-3 text-lg font-bold text-white disabled:opacity-50"
+          className="mt-4 w-full rounded-xl bg-black px-4 py-3 text-lg font-bold text-white"
         >
           {loading ? "Attendere…" : "Continua"}
         </button>
