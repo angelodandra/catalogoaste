@@ -319,7 +319,22 @@ reservedOk = true;
       __waDebug.wa_error = waOk ? null : waError;
     } catch {}
 
-    return NextResponse.json({ ok: true, orderId: order.id, pdfPublicUrl, wa_debug: __waDebug });
+    
+    // === WA_ADMIN_ON_ORDER ===
+    try {
+      if (ownerPhone && pdfPublicUrl) {
+        await sendWhatsAppOrder({
+          toPhones: [ownerPhone],
+          body: `🆕 NUOVO ORDINE\nCliente: ${customerName}\nTelefono: ${customerPhone}`,
+          mediaUrl: pdfPublicUrl,
+        });
+      }
+    } catch (e) {
+      console.error("WA ADMIN ERROR", e);
+    }
+    // === END WA_ADMIN_ON_ORDER ===
+
+return NextResponse.json({ ok: true, orderId: order.id, pdfPublicUrl, wa_debug: __waDebug });
   } catch (e: any) {
     // rollback: se avevamo riservato le casse e poi qualcosa è fallito, le rimettiamo disponibili
     // NB: via RPC (come reserve_products) per evitare problemi di permessi/RLS
