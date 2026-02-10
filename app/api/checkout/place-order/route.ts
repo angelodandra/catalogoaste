@@ -176,6 +176,7 @@ reservedOk = true;
     if (uErr) throw uErr;
     // 5) genera PDF
     let pdfPublicUrl: string | null = null;
+    let rCust: any = null;
     try {
       const res = await fetch(new URL("/api/orders/generate-pdf", appBaseUrl), {
         method: "POST",
@@ -278,7 +279,9 @@ reservedOk = true;
 ` : ``);
 
       if (tpl) {
-        const rCust = await sendWhatsAppOrder({
+        if (process.env.WA_SEND_TO_CUSTOMER === "1") {
+        if (process.env.WA_SEND_TO_CUSTOMER === "1") {
+          const rCust = await sendWhatsAppOrder({
           toPhones: [customerPhoneN],
           contentSid: tpl,
           contentVariables: {}, // per ora senza variabili
@@ -296,6 +299,8 @@ reservedOk = true;
           body: fallback,
           mediaUrl: pdfPublicUrl,
         });
+        }
+      }
         waCustomerSid = (rCust as any)?.successes?.[0]?.sid ?? null;
       }
     } catch (e: any) {
