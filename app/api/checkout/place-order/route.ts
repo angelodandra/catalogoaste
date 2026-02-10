@@ -325,7 +325,7 @@ reservedOk = true;
       if (ownerPhone && pdfPublicUrl) {
         await sendWhatsAppOrder({
           toPhones: [ownerPhone],
-          body: `🆕 NUOVO ORDINE\nCliente: ${customerName}\nTelefono: ${customerPhone}`,
+          body: `🆕 NUOVO ORDINE\nCliente: ${customerName}\nTelefono: ${customerPhoneN}`,
           mediaUrl: pdfPublicUrl,
         });
       }
