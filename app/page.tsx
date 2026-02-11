@@ -8,10 +8,8 @@ export default async function HomePage() {
   const cookieStore = await cookies();
   const customerPhone = cookieStore.get("customer_phone")?.value || "";
 
-  // se NON loggato -> registrazione
-  if (!customerPhone) redirect("/register");
+  if (!customerPhone) redirect("/auth");
 
-  // se loggato -> ultimo catalogo attivo
   const supabase = supabaseServer();
   const { data } = await supabase
     .from("catalogs")
@@ -23,5 +21,5 @@ export default async function HomePage() {
   const id = data?.[0]?.id as string | undefined;
   if (id) redirect(`/catalog/${id}`);
 
-  redirect("/register");
+  redirect("/auth");
 }
