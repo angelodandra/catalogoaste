@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Dati mancanti" }, { status: 400 });
     }
 
-    const customerPhoneN = normalizePhone(customerPhoneRaw);
+    const customerPhoneN = customerPhoneRaw;
 
     // 🔒 Prendi SEMPRE i dati dal customer registrato
     const { data: customer, error: cErr } = await supabase
