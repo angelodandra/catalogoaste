@@ -23,7 +23,16 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: "not_active" }, { status: 403 });
     }
 
-    return NextResponse.json({ ok: true, customer: data });
+    
+    // === LOGIN LOG (customer_logins) ===
+    try {
+      await supabase.from("customer_logins").insert({ customer_phone: p });
+    } catch (e) {
+      console.error("LOGIN LOG ERROR", e);
+    }
+    // === END LOGIN LOG ===
+
+return NextResponse.json({ ok: true, customer: data });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || "server_error" }, { status: 500 });
   }
