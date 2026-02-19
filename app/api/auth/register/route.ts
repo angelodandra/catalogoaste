@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sendWhatsAppOrder } from "@/lib/twilio";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { normalizePhone } from "@/lib/accessSign";
 
@@ -40,7 +41,24 @@ export async function POST(req: Request) {
 
     if (error) throw error;
 
-    return NextResponse.json({ ok: true, customer: data });
+    
+  // === WA REGISTER (notify owner) ===
+  try {
+    const owner = (process.env.OWNER_PHONE || "").trim();
+    const base = (process.env.APP_BASE_URL || "").trim();
+    if (owner) {
+      const link = base ? `${base}/admin/customers` : "/admin/customers";
+      await sendWhatsAppOrder({
+        toPhones: [owner],
+        body: `NUOVA REGISTRAZIONE\nCliente: ${data.name}\nTelefono: ${data.phone}\nLink: ${link}`,
+      });
+    }
+  } catch (e) {
+    console.error("WA REGISTER ERROR", e);
+  }
+  // === END WA REGISTER ===
+
+return NextResponse.json({ ok: true, customer: data });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || "server_error" }, { status: 500 });
   }
