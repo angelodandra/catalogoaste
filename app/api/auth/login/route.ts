@@ -23,6 +23,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "not_active" }, { status: 403 });
     }
 
+    // === LOGIN LOG (customer_logins) ===
+
+    try {
+
+      await supabase.from("customer_logins").insert({ customer_phone: p });
+
+    } catch (e) {
+
+      console.error("LOGIN LOG ERROR", e);
+
+    }
+
+    // === END LOGIN LOG ===
+
+
     const res = NextResponse.json({ ok: true });
     res.cookies.set("customer_phone", p, {
       httpOnly: true,
