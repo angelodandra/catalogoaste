@@ -21,9 +21,8 @@ export async function sendWhatsAppOrder(opts: SendOpts) {
   const from = process.env.TWILIO_WHATSAPP_FROM || "";
   const waMode = (process.env.WA_MODE || "").trim();
   const isSandbox = waMode === "sandbox";
-  let messagingServiceSid = (process.env.TWILIO_MESSAGING_SERVICE_SID || "").trim();
-  if (isSandbox) messagingServiceSid = "";
-
+  let messagingServiceSid = "";
+  
   const effectiveFrom = from || "whatsapp:+14155238886";
 
   if (!sid || !token || (!effectiveFrom && !messagingServiceSid)) {
