@@ -19,9 +19,14 @@ export async function sendWhatsAppOrder(opts: SendOpts) {
   const sid = process.env.TWILIO_ACCOUNT_SID || "";
   const token = process.env.TWILIO_AUTH_TOKEN || "";
   const from = process.env.TWILIO_WHATSAPP_FROM || "";
-  const messagingServiceSid = (process.env.TWILIO_MESSAGING_SERVICE_SID || "").trim();
+  const waMode = (process.env.WA_MODE || "").trim();
+  const isSandbox = waMode === "sandbox";
+  let messagingServiceSid = (process.env.TWILIO_MESSAGING_SERVICE_SID || "").trim();
+  if (isSandbox) messagingServiceSid = "";
 
-  if (!sid || !token || (!from && !messagingServiceSid)) {
+  const effectiveFrom = from || "whatsapp:+14155238886";
+
+  if (!sid || !token || (!effectiveFrom && !messagingServiceSid)) {
     throw new Error("Twilio non configurato correttamente");
   }
 
@@ -43,7 +48,7 @@ export async function sendWhatsAppOrder(opts: SendOpts) {
           to: toWhatsApp(p),
           ...(messagingServiceSid
             ? { messagingServiceSid }
-            : { from: toWhatsApp(from) }),
+            : { from: toWhatsApp(effectiveFrom) }),
         };
 
         if (opts.contentSid) {
