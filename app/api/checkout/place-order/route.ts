@@ -339,6 +339,25 @@ reservedOk = true;
     }
     // === END WA_ADMIN_ON_ORDER ===
 
+
+    // === OWNER WA (sandbox) ===
+    try {
+      const owner = (process.env.OWNER_PHONE || "").trim();
+      const forceOwnerOnly = String(process.env.WA_FORCE_OWNER_ONLY || "0") === "1";
+      const waMode = (process.env.WA_MODE || "").trim(); // "sandbox" | ""
+      if (owner && (forceOwnerOnly || waMode === "sandbox")) {
+        const link = `${process.env.APP_BASE_URL || ""}/o/${order.id}`;
+        await sendWhatsAppOrder({
+          toPhones: [owner],
+          body: `🆕 NUOVO ORDINE\nCliente: ${customerName}\nTelefono: ${customerPhoneN}\nLink: ${link}`,
+          mediaUrl: null,
+        });
+      }
+    } catch (e) {
+      console.error("OWNER WA ERROR", e);
+    }
+    // === /OWNER WA (sandbox) ===
+
 return NextResponse.json({ ok: true, orderId: order.id, pdfPublicUrl, wa_debug: __waDebug });
   } catch (e: any) {
     // rollback: se avevamo riservato le casse e poi qualcosa è fallito, le rimettiamo disponibili
