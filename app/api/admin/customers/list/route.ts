@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { requireAdmin } from "@/lib/requireAdmin";
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
+    await requireAdmin();
+
     const url = new URL(req.url);
     const q = (url.searchParams.get("q") || "").trim().toLowerCase();
 
@@ -15,11 +18,8 @@ export async function GET(req: Request) {
       .select("id,name,company,phone,status,created_at,updated_at")
       .order("created_at", { ascending: false });
 
-    // filtro semplice lato SQL (ilike)
     if (q) {
-      query = query.or(
-        `name.ilike.%${q}%,company.ilike.%${q}%,phone.ilike.%${q}%`
-      );
+      query = query.or(`name.ilike.%${q}%,company.ilike.%${q}%,phone.ilike.%${q}%`);
     }
 
     const { data, error } = await query;
@@ -27,6 +27,12 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ ok: true, customers: data || [] });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "Errore" }, { status: 500 });
+    const msg = String(e?.message || "Errore");
+    const status =
+      msg.startsWith("admin_unauthorized") ? 401 :
+      msg.startsWith("admin_forbidden") ? 403 :
+      500;
+
+    return NextResponse.json({ ok: false, error: msg }, { status });
   }
 }
