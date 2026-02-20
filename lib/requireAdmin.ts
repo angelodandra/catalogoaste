@@ -8,22 +8,28 @@ function parseList(s: string | undefined | null) {
     .filter(Boolean);
 }
 
+function isJwt(s: string) {
+  const t = (s || "").trim();
+  if (!t) return false;
+  return /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(t);
+}
+
 function extractAccessTokenFromCookieValue(v: string): string | null {
   const raw = (v || "").trim();
   if (!raw) return null;
 
-  // Caso: token puro
-  if (raw.startsWith("eyJ")) return raw;
+  // Caso 1: JWT puro (3 parti con i punti)
+  if (isJwt(raw)) return raw;
 
-  // Caso: JSON tipo {"access_token":"..."}
+  // Caso 2: JSON tipo {"access_token":"..."} oppure array con access_token
   try {
     const j: any = JSON.parse(raw);
-    if (typeof j?.access_token === "string" && j.access_token) return j.access_token;
-    // Caso: array [ { access_token: "..." }, ... ] o [ "access", "refresh" ]
+    if (typeof j?.access_token === "string" && isJwt(j.access_token)) return j.access_token;
+
     if (Array.isArray(j)) {
       const first = j[0];
-      if (typeof first === "string" && first.startsWith("eyJ")) return first;
-      if (typeof first?.access_token === "string" && first.access_token) return first.access_token;
+      if (typeof first === "string" && isJwt(first)) return first;
+      if (typeof first?.access_token === "string" && isJwt(first.access_token)) return first.access_token;
     }
   } catch {}
 
@@ -42,7 +48,7 @@ async function getSupabaseAccessToken(): Promise<string | null> {
   const t1 = direct ? extractAccessTokenFromCookieValue(direct) : null;
   if (t1) return t1;
 
-  // 2) cookie stile sb-<projectref>-auth-token (SSR / varie integrazioni)
+  // 2) cookie stile sb-<projectref>-auth-token
   const all = store.getAll();
   const authCookie = all.find((c) => c.name.endsWith("-auth-token") || c.name.includes("auth-token"));
   if (authCookie?.value) {
@@ -50,12 +56,7 @@ async function getSupabaseAccessToken(): Promise<string | null> {
     if (t2) return t2;
   }
 
-  // 3) fallback: prova qualunque cookie che “sembra” un jwt
-  for (const c of all) {
-    const maybe = extractAccessTokenFromCookieValue(c.value || "");
-    if (maybe) return maybe;
-  }
-
+  // NIENTE fallback su “qualunque cookie”: troppo rischioso
   return null;
 }
 
@@ -79,7 +80,10 @@ export async function requireAdmin() {
   const email = (data.user.email || "").toLowerCase();
   const allow = parseList(process.env.NEXT_PUBLIC_ADMIN_EMAILS);
 
-  if (!email || (allow.length > 0 && !allow.includes(email))) {
+  if (!email) {
+    throw new Error("admin_forbidden_email_missing");
+  }
+  if (allow.length > 0 && !allow.includes(email)) {
     throw new Error("admin_forbidden_email_not_allowed");
   }
 
