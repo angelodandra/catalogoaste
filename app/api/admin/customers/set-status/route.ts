@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { sendWhatsAppOrder } from "@/lib/twilio";
+import { requireAdmin } from "@/lib/requireAdmin";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    await requireAdmin();
     const { customerId, status } = await req.json();
     if (!customerId) return NextResponse.json({ error: "customerId mancante" }, { status: 400 });
     if (!status || !["active", "revoked"].includes(status))
