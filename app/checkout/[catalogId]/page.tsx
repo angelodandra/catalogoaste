@@ -34,9 +34,9 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch("/api/access/me", { credentials: "include" });
+        const r = await fetch("/api/auth/me", { credentials: "include" });
         if (r.status === 401) {
-          window.location.href = `/access?next=/checkout/${catalogId}`;
+          window.location.href = `/auth?next=/checkout/${catalogId}`;
           return;
         }
         const j = await r.json();
