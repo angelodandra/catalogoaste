@@ -25,14 +25,15 @@ export async function GET(req: Request) {
     const { data, error } = await query;
     if (error) throw error;
 
-    return NextResponse.json({ ok: true, customers: data || [] });
+    const res = NextResponse.json({ ok: true, customers: data || [] });
+    res.headers.set("x-admin-guard", "1");
+    return res;
   } catch (e: any) {
-    const msg = String(e?.message || "Errore");
-    const status =
-      msg.startsWith("admin_unauthorized") ? 401 :
-      msg.startsWith("admin_forbidden") ? 403 :
-      500;
-
-    return NextResponse.json({ ok: false, error: msg }, { status });
+    const msg = String(e?.message || "admin_unauthorized");
+    const status = msg.includes("forbidden") ? 403 : 401;
+    return NextResponse.json(
+      { ok: false, error: msg },
+      { status, headers: { "x-admin-guard": "0" } }
+    );
   }
 }
