@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { sendWhatsAppOrder } from "@/lib/twilioSend";
 
+import { requireAdmin } from "@/lib/requireAdmin";
+
 export const runtime = "nodejs";
 
 function eur(n: number | null | undefined) {
@@ -16,6 +18,7 @@ function nowIT() {
 
 export async function POST(req: Request) {
   try {
+    await requireAdmin();
     const { orderId } = await req.json();
     if (!orderId) return NextResponse.json({ error: "orderId mancante" }, { status: 400 });
 

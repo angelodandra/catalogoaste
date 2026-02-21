@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import PDFDocument from "pdfkit";
 
+import { requireAdmin } from "@/lib/requireAdmin";
+
 export const runtime = "nodejs";
 
 async function fetchAsBuffer(url: string) {
@@ -38,6 +40,7 @@ function eur(n: number | null | undefined) {
 
 export async function GET(req: Request) {
   try {
+    await requireAdmin();
     const url = new URL(req.url);
     const orderId = safeStr(url.searchParams.get("orderId")).trim();
     if (!orderId) return new NextResponse("orderId mancante", { status: 400 });

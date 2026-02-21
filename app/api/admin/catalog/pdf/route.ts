@@ -4,6 +4,8 @@ import PDFDocument from "pdfkit";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { requireAdmin } from "@/lib/requireAdmin";
+
 export const runtime = "nodejs";
 
 function safeStr(v: any) {
@@ -21,6 +23,7 @@ function publicImageUrl(path: string) {
 
 async function fetchImageBuffer(url: string): Promise<Buffer | null> {
   try {
+    await requireAdmin();
     const r = await fetch(url);
     if (!r.ok) return null;
     const ab = await r.arrayBuffer();

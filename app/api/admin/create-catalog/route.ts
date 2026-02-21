@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
+import { requireAdmin } from "@/lib/requireAdmin";
+
 export async function POST(req: Request) {
   try {
+    await requireAdmin();
     const { title } = await req.json();
     if (!title) {
       return NextResponse.json({ error: "Titolo mancante" }, { status: 400 });

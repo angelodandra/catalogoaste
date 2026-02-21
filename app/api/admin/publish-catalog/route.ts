@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
+import { requireAdmin } from "@/lib/requireAdmin";
+
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    await requireAdmin();
     const { catalogId } = await req.json();
     if (!catalogId) return NextResponse.json({ error: "catalogId mancante" }, { status: 400 });
 

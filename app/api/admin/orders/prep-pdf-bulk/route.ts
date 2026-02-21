@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import PDFDocument from "pdfkit";
 
+import { requireAdmin } from "@/lib/requireAdmin";
+
 export const runtime = "nodejs";
 
 function safeStr(v: any) {
@@ -38,6 +40,7 @@ function eur(n: number | null | undefined) {
 
 export async function GET(req: Request) {
   try {
+    await requireAdmin();
     const url = new URL(req.url);
     const from = safeStr(url.searchParams.get("from")).trim(); // YYYY-MM-DD
     const to = safeStr(url.searchParams.get("to")).trim();     // YYYY-MM-DD
