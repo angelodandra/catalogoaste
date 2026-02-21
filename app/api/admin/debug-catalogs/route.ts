@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
+import { requireAdmin } from "@/lib/requireAdmin";
+
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
+    await requireAdmin();
     const supabase = supabaseServer();
 
     const { data, error } = await supabase

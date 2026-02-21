@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
+import { requireAdmin } from "@/lib/requireAdmin";
+
 export const runtime = "nodejs";
 
 type Row = { productId: string; price: number | null; weightKg?: number | null };
@@ -15,6 +17,7 @@ function toNumberOrNull(v: any): number | null {
 
 export async function POST(req: Request) {
   try {
+    await requireAdmin();
     const { catalogId, rows } = await req.json();
     if (!catalogId || !Array.isArray(rows)) {
       return NextResponse.json({ error: "Dati mancanti" }, { status: 400 });

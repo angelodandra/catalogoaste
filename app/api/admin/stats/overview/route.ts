@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
+import { requireAdmin } from "@/lib/requireAdmin";
+
 export const runtime = "nodejs";
 
 type Row = {
@@ -12,6 +14,7 @@ type Row = {
 
 export async function GET(req: Request) {
   try {
+    await requireAdmin();
     const url = new URL(req.url);
     const days = Math.max(1, Math.min(365, Number(url.searchParams.get("days") || "30")));
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();

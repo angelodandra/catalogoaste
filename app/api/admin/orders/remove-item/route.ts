@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
+import { requireAdmin } from "@/lib/requireAdmin";
+
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    await requireAdmin();
     const body = await req.json();
     const orderId = body?.orderId as string | undefined;
     const productId = body?.productId as string | undefined;
