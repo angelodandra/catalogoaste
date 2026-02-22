@@ -58,8 +58,8 @@ export default function AdminStatsPage() {
     <div>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Statistiche</h1>
-          <div className="text-sm opacity-70">Login e ordini ultimi {days} giorni</div>
+          <div className="flex items-start justify-between gap-3"><div><h1 className="text-2xl font-semibold">Statistiche</h1>
+          <div className="text-sm opacity-70">Login e ordini ultimi {days} giorni</div></div><a href="/admin" className="rounded border bg-white px-3 py-2 text-sm font-semibold hover:bg-gray-50">← Admin</a></div>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
