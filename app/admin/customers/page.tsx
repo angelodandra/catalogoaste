@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 type Customer = {
@@ -14,12 +15,12 @@ type Customer = {
 };
 
 async function getAdminToken(): Promise<string | null> {
-  const supabase = supabaseBrowser();
-  const { data } = await supabase.auth.getSession();
-  if (data?.session?.access_token) {
-    return data.session.access_token;
+  try {
+    const { data } = await supabaseBrowser().auth.getSession();
+    return data.session?.access_token ?? null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 async function adminFetch(input: RequestInfo | URL, init?: RequestInit) {
@@ -35,6 +36,9 @@ export default function AdminCustomersPage() {
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // indica quale riga è in azione (approva/revoca) per dare feedback UI
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const s = query.trim().toLowerCase();
@@ -64,17 +68,22 @@ export default function AdminCustomersPage() {
   }
 
   async function setStatus(customerId: string, status: "active" | "revoked") {
-    const res = await adminFetch("/api/admin/customers/set-status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customerId, status }),
-    });
-    const j = await res.json();
-    if (!res.ok || !j?.ok) {
-      alert(j?.error || "Errore");
-      return;
+    setBusyId(customerId);
+    try {
+      const res = await adminFetch("/api/admin/customers/set-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId, status }),
+      });
+      const j = await res.json();
+      if (!res.ok || !j?.ok) {
+        alert(j?.error || "Errore");
+        return;
+      }
+      await load(query);
+    } finally {
+      setBusyId(null);
     }
-    await load(query);
   }
 
   useEffect(() => {
@@ -82,13 +91,24 @@ export default function AdminCustomersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const activeCount = rows.filter((x) => (x.status || "").toLowerCase() === "active").length;
+
   return (
     <div>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
+          <div className="mb-2">
+            <Link
+              href="/admin"
+              className="inline-flex items-center gap-2 rounded border px-3 py-1 text-sm hover:bg-gray-50"
+            >
+              ← Torna ad Admin
+            </Link>
+          </div>
+
           <h1 className="text-2xl font-semibold">Clienti</h1>
           <div className="text-sm opacity-70">
-            Totale: {rows.length} • Attivi: {rows.filter((x) => (x.status || "").toLowerCase() === "active").length}
+            Totale: {rows.length} • Attivi: {activeCount}
           </div>
         </div>
 
@@ -100,14 +120,14 @@ export default function AdminCustomersPage() {
             onChange={(e) => setQuery(e.target.value)}
           />
           <button
-            className="rounded border px-3 py-2"
+            className="rounded border px-3 py-2 hover:bg-gray-50 disabled:opacity-60"
             onClick={() => load(query)}
             disabled={loading}
           >
-            Cerca
+            {loading ? "..." : "Cerca"}
           </button>
           <button
-            className="rounded border px-3 py-2"
+            className="rounded border px-3 py-2 hover:bg-gray-50 disabled:opacity-60"
             onClick={() => {
               setQuery("");
               load("");
@@ -129,12 +149,14 @@ export default function AdminCustomersPage() {
                 <th>Cliente</th>
                 <th>Telefono</th>
                 <th>Stato</th>
-                <th className="w-[240px]">Azioni</th>
+                <th className="w-[260px]">Azioni</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((c) => {
                 const st = (c.status || "").toLowerCase();
+                const busy = busyId === c.id;
+
                 return (
                   <tr key={c.id} className="border-t [&>td]:px-3 [&>td]:py-2">
                     <td>
@@ -145,23 +167,25 @@ export default function AdminCustomersPage() {
                     <td>{c.status || "-"}</td>
                     <td className="flex gap-2">
                       <button
-                        className="rounded border px-3 py-1"
-                        disabled={loading || st === "active"}
+                        className="rounded border px-3 py-1 hover:bg-gray-50 disabled:opacity-60"
+                        disabled={loading || busy || st === "active"}
                         onClick={() => setStatus(c.id, "active")}
                       >
-                        Approva
+                        {busy && st !== "active" ? "..." : "Approva"}
                       </button>
                       <button
-                        className="rounded border px-3 py-1"
-                        disabled={loading || st === "revoked"}
+                        className="rounded border px-3 py-1 hover:bg-gray-50 disabled:opacity-60"
+                        disabled={loading || busy || st === "revoked"}
                         onClick={() => setStatus(c.id, "revoked")}
                       >
-                        Revoca
+                        {busy && st !== "revoked" ? "..." : "Revoca"}
                       </button>
+                      {busy && <span className="self-center text-xs opacity-70">Aggiorno…</span>}
                     </td>
                   </tr>
                 );
               })}
+
               {filtered.length === 0 && (
                 <tr className="border-t">
                   <td className="px-3 py-6 opacity-70" colSpan={4}>
