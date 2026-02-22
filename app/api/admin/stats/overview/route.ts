@@ -13,7 +13,7 @@ type Row = {
 
 export async function GET(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
 
     const url = new URL(req.url);
     const days = Math.max(1, Math.min(365, Number(url.searchParams.get("days") || "30")));

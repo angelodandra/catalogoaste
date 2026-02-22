@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const form = await req.formData();
 
     const catalogId = form.get("catalogId") as string | null;

@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const { productId } = await req.json();
     if (!productId) return NextResponse.json({ error: "productId mancante" }, { status: 400 });
 

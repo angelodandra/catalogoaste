@@ -26,7 +26,7 @@ function toNum(v: any): number | null {
 
 export async function POST(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const form = await req.formData();
     const catalogId = (form.get("catalogId") as string | null)?.trim() || "";
     const mode = ((form.get("mode") as string | null)?.trim() || "preview") as "preview" | "apply";

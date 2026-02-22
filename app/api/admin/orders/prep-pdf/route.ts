@@ -40,7 +40,7 @@ function eur(n: number | null | undefined) {
 
 export async function GET(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const url = new URL(req.url);
     const orderId = safeStr(url.searchParams.get("orderId")).trim();
     if (!orderId) return new NextResponse("orderId mancante", { status: 400 });

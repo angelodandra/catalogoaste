@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const { catalogId } = await req.json();
     if (!catalogId) return NextResponse.json({ error: "catalogId mancante" }, { status: 400 });
 

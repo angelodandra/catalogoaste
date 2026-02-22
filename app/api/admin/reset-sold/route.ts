@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const body = await req.json().catch(() => ({}));
     const catalogId = (body.catalogId || "").toString().trim();
     const all = Boolean(body.all);

@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const { orderId, deletePdf } = await req.json();
     if (!orderId) return NextResponse.json({ error: "orderId mancante" }, { status: 400 });
 

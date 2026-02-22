@@ -40,7 +40,7 @@ function eur(n: number | null | undefined) {
 
 export async function GET(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const url = new URL(req.url);
     const from = safeStr(url.searchParams.get("from")).trim(); // YYYY-MM-DD
     const to = safeStr(url.searchParams.get("to")).trim();     // YYYY-MM-DD

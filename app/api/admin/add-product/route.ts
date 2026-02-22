@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const body = await req.json();
 
     const catalog_id = String(body.catalogId ?? body.catalog_id ?? "").trim();

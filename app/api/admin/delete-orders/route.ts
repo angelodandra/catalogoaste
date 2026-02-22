@@ -16,7 +16,7 @@ export const runtime = "nodejs";
  */
 export async function POST(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const { mode, from, to, deletePdfs } = await req.json();
 
     if (mode !== "all" && mode !== "range") {

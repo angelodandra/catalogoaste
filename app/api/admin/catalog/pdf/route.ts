@@ -23,7 +23,6 @@ function publicImageUrl(path: string) {
 
 async function fetchImageBuffer(url: string): Promise<Buffer | null> {
   try {
-    await requireAdmin();
     const r = await fetch(url);
     if (!r.ok) return null;
     const ab = await r.arrayBuffer();

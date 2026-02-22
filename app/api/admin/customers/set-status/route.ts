@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const { customerId, status } = await req.json();
     if (!customerId) return NextResponse.json({ error: "customerId mancante" }, { status: 400 });
     if (!status || !["active", "revoked"].includes(status))

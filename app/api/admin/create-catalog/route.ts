@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/requireAdmin";
 
 export async function POST(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const { title } = await req.json();
     if (!title) {
       return NextResponse.json({ error: "Titolo mancante" }, { status: 400 });

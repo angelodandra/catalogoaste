@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
 
     const url = new URL(req.url);
     const q = (url.searchParams.get("q") || "").trim().toLowerCase();

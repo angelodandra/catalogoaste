@@ -1,6 +1,6 @@
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { cookies, headers } from "next/headers";
-import { NextResponse } from "next/server";
 
 function parseList(s: string | undefined | null) {
   return (s || "")
@@ -28,17 +28,31 @@ function extractAccessTokenFromCookieValue(v: string): string | null {
   return null;
 }
 
-async function getSupabaseAccessToken(): Promise<string | null> {
-  // 0) Authorization: Bearer <jwt>
+function bearerFromAuthHeader(auth: string | null | undefined): string | null {
+  const a = (auth || "").trim();
+  if (!a) return null;
+  if (a.toLowerCase().startsWith("bearer ")) {
+    const tok = a.slice(7).trim();
+    return tok || null;
+  }
+  return null;
+}
+
+async function getSupabaseAccessToken(req?: Request): Promise<string | null> {
+  // 1) Authorization header (PRIORITÀ)
   try {
-    const hs = await headers();
-    const auth = (hs.get("authorization") || hs.get("Authorization") || "").trim();
-    if (auth.toLowerCase().startsWith("bearer ")) {
-      const tok = auth.slice(7).trim();
-      if (tok) return tok;
-    }
+    const tReq = bearerFromAuthHeader(req?.headers?.get("authorization") || req?.headers?.get("Authorization"));
+    if (tReq) return tReq;
   } catch {}
 
+  // 2) Fallback: next/headers() (alcuni runtime)
+  try {
+    const hs = await headers();
+    const tHs = bearerFromAuthHeader(hs.get("authorization") || hs.get("Authorization"));
+    if (tHs) return tHs;
+  } catch {}
+
+  // 3) Cookie fallback (se un giorno useremo cookie Supabase)
   const store = await cookies();
 
   const direct =
@@ -64,11 +78,15 @@ async function getSupabaseAccessToken(): Promise<string | null> {
   return null;
 }
 
-export async function requireAdmin() {
-  const token = await getSupabaseAccessToken();
-  if (!token) {
-    throw new Error("admin_unauthorized_no_token");
-  }
+export function adminErrorResponse(e: any) {
+  const msg = e?.message ?? "Errore";
+  const status = msg.startsWith("admin_unauthorized") ? 401 : msg.startsWith("admin_forbidden") ? 403 : 500;
+  return NextResponse.json({ ok: false, error: msg }, { status });
+}
+
+export async function requireAdmin(req?: Request) {
+  const token = await getSupabaseAccessToken(req);
+  if (!token) throw new Error("admin_unauthorized_no_token");
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -77,28 +95,13 @@ export async function requireAdmin() {
   });
 
   const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data?.user) {
-    throw new Error("admin_unauthorized_invalid_token");
-  }
+  if (error || !data?.user) throw new Error("admin_unauthorized_invalid_token");
 
   const email = (data.user.email || "").toLowerCase();
   const allow = parseList(process.env.NEXT_PUBLIC_ADMIN_EMAILS);
 
-  if (!email || (allow.length > 0 && !allow.includes(email))) {
-    throw new Error("admin_forbidden_email_not_allowed");
-  }
+  if (!email) throw new Error("admin_forbidden_email_missing");
+  if (allow.length > 0 && !allow.includes(email)) throw new Error("admin_forbidden_email_not_allowed");
 
   return { user: data.user, email };
-}
-
-// Helper: usa questa nei route handler per avere status corretti (401/403) invece di 500
-export function adminErrorResponse(e: any) {
-  const msg = String(e?.message || "Errore");
-  if (msg.startsWith("admin_unauthorized_")) {
-    return NextResponse.json({ ok: false, error: msg }, { status: 401 });
-  }
-  if (msg.startsWith("admin_forbidden_")) {
-    return NextResponse.json({ ok: false, error: msg }, { status: 403 });
-  }
-  return NextResponse.json({ ok: false, error: msg }, { status: 500 });
 }

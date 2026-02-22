@@ -17,7 +17,7 @@ function toNumberOrNull(v: any): number | null {
 
 export async function POST(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const { catalogId, rows } = await req.json();
     if (!catalogId || !Array.isArray(rows)) {
       return NextResponse.json({ error: "Dati mancanti" }, { status: 400 });

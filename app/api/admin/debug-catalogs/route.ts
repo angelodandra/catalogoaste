@@ -5,9 +5,9 @@ import { requireAdmin } from "@/lib/requireAdmin";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const supabase = supabaseServer();
 
     const { data, error } = await supabase

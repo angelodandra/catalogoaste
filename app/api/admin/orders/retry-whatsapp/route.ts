@@ -18,7 +18,7 @@ function nowIT() {
 
 export async function POST(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const { orderId } = await req.json();
     if (!orderId) return NextResponse.json({ error: "orderId mancante" }, { status: 400 });
 

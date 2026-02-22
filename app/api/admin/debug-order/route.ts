@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const url = new URL(req.url);
     const orderId = url.searchParams.get("orderId");
     if (!orderId) return NextResponse.json({ ok: false, error: "missing orderId" }, { status: 400 });

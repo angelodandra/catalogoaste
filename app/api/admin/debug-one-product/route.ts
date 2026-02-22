@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdmin(req);
     const supabase = supabaseServer();
     const url = new URL(req.url);
     const catalogId = url.searchParams.get("catalogId");
