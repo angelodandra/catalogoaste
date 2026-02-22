@@ -155,6 +155,14 @@ export default function AdminPage() {
               <div className="text-sm text-gray-600">Gestisci autorizzazioni (revoca/riattiva)</div>
             </a>
 
+          <a
+            href="/admin/stats"
+            className="block rounded-2xl border bg-white p-4 shadow-sm hover:bg-gray-50"
+          >
+            <div className="text-lg font-bold">Statistiche</div>
+            <div className="text-sm text-gray-600">Login e ordini (ultimi giorni)</div>
+          </a>
+
           <button
             onClick={load}
             disabled={loading}
