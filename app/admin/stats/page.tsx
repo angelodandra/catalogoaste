@@ -30,7 +30,14 @@ export default function AdminStatsPage() {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/admin/stats/overview?days=${days}`);
+        const { supabaseBrowser } = await import("@/lib/supabaseBrowser");
+        const { data: sessionData } = await supabaseBrowser().auth.getSession();
+        const token = sessionData?.session?.access_token;
+
+        const res = await fetch(`/api/admin/stats/overview?days=${days}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+
         const j = await res.json();
         setRows(j.customers || []);
       } finally {
