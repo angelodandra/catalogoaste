@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
-
-import { requireAdmin } from "@/lib/requireAdmin";
+import { requireAdmin, adminErrorResponse } from "@/lib/requireAdmin";
 
 export const runtime = "nodejs";
 
@@ -15,6 +14,7 @@ type Row = {
 export async function GET(req: Request) {
   try {
     await requireAdmin();
+
     const url = new URL(req.url);
     const days = Math.max(1, Math.min(365, Number(url.searchParams.get("days") || "30")));
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -25,7 +25,6 @@ export async function GET(req: Request) {
       .from("customers")
       .select("name,company,phone,status,created_at")
       .order("created_at", { ascending: false });
-
     if (eCust) throw eCust;
 
     const { data: logins, error: eLog } = await supabase
@@ -33,7 +32,6 @@ export async function GET(req: Request) {
       .select("customer_phone,logged_at")
       .gte("logged_at", since)
       .order("logged_at", { ascending: false });
-
     if (eLog) throw eLog;
 
     const { data: orders, error: eOrd } = await supabase
@@ -41,7 +39,6 @@ export async function GET(req: Request) {
       .select("customer_phone,status,created_at")
       .gte("created_at", since)
       .order("created_at", { ascending: false });
-
     if (eOrd) throw eOrd;
 
     const loginAgg = new Map<string, { count: number; last: string | null }>();
@@ -89,6 +86,6 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ ok: true, days, since, customers: out });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "Errore" }, { status: 500 });
+    return adminErrorResponse(e);
   }
 }
