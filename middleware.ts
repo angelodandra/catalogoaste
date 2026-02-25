@@ -4,6 +4,10 @@ import type { NextRequest } from "next/server";
 const CANONICAL_HOST = "ordini.fratellidandrassi.com";
 
 export function middleware(req: NextRequest) {
+  if (process.env.NODE_ENV === "development") {
+    return NextResponse.next();
+  }
+
   const { nextUrl } = req;
   const host = req.headers.get("host") || "";
 

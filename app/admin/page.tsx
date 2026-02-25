@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
+import { adminFetch } from "@/lib/adminFetch";
 
 type Catalog = {
   id: string;
@@ -37,7 +38,7 @@ export default function AdminPage() {
 
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/create-catalog", {
+      const res = await adminFetch("/api/admin/create-catalog", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: t }),
@@ -64,7 +65,7 @@ export default function AdminPage() {
 
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/add-product", { method: "POST", body: fd });
+      const res = await adminFetch("/api/admin/add-product", { method: "POST", body: fd });
       const json = await res.json();
       if (!res.ok) {
         alert(json.error || "Errore upload singolo");
@@ -90,7 +91,7 @@ export default function AdminPage() {
 
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/add-products-bulk", { method: "POST", body: fd });
+      const res = await adminFetch("/api/admin/add-products-bulk", { method: "POST", body: fd });
       const json = await res.json();
       if (!res.ok) {
         alert(json.error || "Errore upload multiplo");
@@ -111,7 +112,7 @@ export default function AdminPage() {
 
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/delete-catalog", {
+      const res = await adminFetch("/api/admin/delete-catalog", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ catalogId: c.id }),
