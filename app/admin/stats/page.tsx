@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { adminFetch } from "@/lib/adminFetch";
 
 type Row = {
   name: string | null;
@@ -34,7 +35,7 @@ export default function AdminStatsPage() {
         const { data: sessionData } = await supabaseBrowser().auth.getSession();
         const token = sessionData?.session?.access_token;
 
-        const res = await fetch(`/api/admin/stats/overview?days=${days}`, {
+        const res = await adminFetch(`/api/admin/stats/overview?days=`, {
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         });
 

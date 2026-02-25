@@ -2,6 +2,7 @@
 
 
 import { useEffect, useState } from "react";
+import { adminFetch } from "@/lib/adminFetch";
 import { useRouter } from "next/navigation";
 
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
@@ -116,7 +117,7 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
 
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/cancel-order", {
+      const res = await adminFetch("/api/admin/cancel-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId }),
@@ -141,7 +142,7 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
 
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/unsell-product", {
+      const res = await adminFetch("/api/admin/unsell-product", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ productId }),
@@ -165,7 +166,7 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
 
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/remove-order-item", {
+      const res = await adminFetch("/api/admin/remove-order-item", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId, productId }),
@@ -190,7 +191,7 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
     if (!confirm("Riprovo l'invio WhatsApp per questo ordine?")) return;
 
     try {
-      const res = await fetch("/api/admin/orders/retry-whatsapp", {
+      const res = await adminFetch("/api/admin/orders/retry-whatsapp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId }),
@@ -214,7 +215,7 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
     if (!confirm("Reinvia WhatsApp (con PDF aggiornato) per questo ordine?")) return;
 
     try {
-      const res = await fetch("/api/admin/orders/resend-whatsapp", {
+      const res = await adminFetch("/api/admin/orders/resend-whatsapp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId }),
@@ -238,7 +239,7 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
     if (!confirm("Segno questo ordine come WhatsApp inviato?")) return;
 
     try {
-      const res = await fetch("/api/admin/orders/mark-wa-sent", {
+      const res = await adminFetch("/api/admin/orders/mark-wa-sent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId, deletePdf: true }),
@@ -266,7 +267,7 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
 
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/delete-orders", {
+      const res = await adminFetch("/api/admin/delete-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "range", from: fromDate, to: toDate, deletePdfs }),
@@ -291,7 +292,7 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
 
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/delete-orders", {
+      const res = await adminFetch("/api/admin/delete-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "all", deletePdfs }),

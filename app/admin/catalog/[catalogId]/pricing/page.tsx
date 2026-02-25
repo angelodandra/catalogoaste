@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useMemo, useState } from "react";
+import { adminFetch } from "@/lib/adminFetch";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import { useRouter } from "next/navigation";
 
@@ -43,7 +44,7 @@ export default function PricingPage(props: { params: Promise<{ catalogId: string
       fd.append("mode", mode);
       fd.append("file", pesiFile);
 
-      const res = await fetch("/api/admin/import-pesi", { method: "POST", body: fd });
+      const res = await adminFetch("/api/admin/import-pesi", { method: "POST", body: fd });
       const json = await res.json();
 
       if (!res.ok) {
@@ -126,7 +127,7 @@ async function load(silent: boolean = false) {
         };
       });
 
-      const res = await fetch("/api/admin/save-prices", {
+      const res = await adminFetch("/api/admin/save-prices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ catalogId, rows: payload }),
@@ -153,7 +154,7 @@ async function load(silent: boolean = false) {
     try {
       await saveAll();
 
-      const res = await fetch("/api/admin/publish-catalog", {
+      const res = await adminFetch("/api/admin/publish-catalog", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ catalogId }),
