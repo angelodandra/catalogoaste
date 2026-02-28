@@ -427,7 +427,14 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
             disabled={loading || !fromDate || !toDate}
             onClick={() => {
               const qs = new URLSearchParams({ from: fromDate, to: toDate });
-              window.open(`/api/admin/orders/prep-pdf-bulk?${qs.toString()}`, "_blank");
+              (async () => {
+                const res = await adminFetch(`/api/admin/orders/prep-pdf-bulk?${qs.toString()}`);
+                if (!res.ok) { alert("Errore stampa"); return; }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                window.open(url, "_blank");
+                setTimeout(() => URL.revokeObjectURL(url), 60_000);
+              })();
             }}
           >
             Stampa preparazione cumulativa
@@ -483,13 +490,23 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
                 >
                   Annulla ordine
                 </button>
-<a
-  href={`/api/admin/orders/prep-pdf?orderId=${o.id}`}
-  target="_blank"
-  className="rounded-lg border bg-white px-3 py-1 text-sm font-semibold hover:bg-gray-50"
+<button
+  type="button"
+  className="rounded-lg border bg-white px-3 py-1 text-sm font-semibold hover:bg-gray-50 disabled:opacity-60"
+  disabled={loading}
+  onClick={() => {
+    (async () => {
+      const res = await adminFetch(`/api/admin/orders/prep-pdf?orderId=${o.id}`);
+      if (!res.ok) { alert("Errore stampa"); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    })();
+  }}
 >
   🖨️ Stampa preparazione
-</a>
+</button>
 
                 <button
                   type="button"
