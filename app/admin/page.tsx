@@ -240,7 +240,16 @@ export default function AdminPage() {
                 </a>
                 <a
                   className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold"
-                  href={`/api/admin/catalog/pdf?catalogId=${c.id}`}
+                  onClick={() => {
+                    (async () => {
+                      const res = await adminFetch(`/api/admin/catalog/pdf?catalogId=${c.id}`);
+                      if (!res.ok) { alert("Errore PDF catalogo"); return; }
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      window.open(url, "_blank");
+                      setTimeout(() => URL.revokeObjectURL(url), 60000);
+                    })();
+                  }}
                   target="_blank"
                   rel="noreferrer"
                 >
