@@ -1,15 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { use, useMemo, useState } from "react";
 
-export default function AuthPage({ searchParams }: { searchParams: { next?: string } }) {
-  const nextParam = searchParams?.next || "/";
+export default function AuthPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  const sp = use(searchParams);
+  const nextParam = sp?.next || "/catalog";
 
   const nextSafe = useMemo(() => {
-    if (nextParam === "/") return "/";
+    if (nextParam === "/") return "/catalog";
+    if (nextParam === "/catalog") return "/catalog";
     if (nextParam.startsWith("/catalog/")) return nextParam;
     if (nextParam.startsWith("/checkout/")) return nextParam;
-    return "/";
+    return "/catalog";
   }, [nextParam]);
 
   const [phone, setPhone] = useState("");
@@ -46,7 +48,7 @@ export default function AuthPage({ searchParams }: { searchParams: { next?: stri
         return;
       }
 
-      window.location.href = nextSafe;
+      window.location.href = "/catalog";
     } catch {
       setMsg("Errore di rete.");
     } finally {

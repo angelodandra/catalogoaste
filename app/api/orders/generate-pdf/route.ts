@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     // 1) Ordine
     const { data: order, error: oErr } = await supabase
       .from("orders")
-      .select("id,catalog_id,customer_name,customer_phone,owner_phone,created_at")
+      .select("id,catalog_id,customer_name,customer_phone,owner_phone,created_at,catalogs(title,online_title)")
       .eq("id", orderId)
       .single();
 
@@ -78,6 +78,13 @@ export async function POST(req: Request) {
     doc.text(`Cliente: ${order.customer_name}`);
     doc.text(`Telefono: ${order.customer_phone}`);
     doc.text(`Data: ${new Date(order.created_at).toLocaleString("it-IT")}`);
+
+    // Catalogo / Provenienza
+    const catalogTitle = order.catalogs?.title || "";
+    const catalogOnline = order.catalogs?.online_title || "";
+
+    if (catalogTitle) doc.text(`Catalogo: ${catalogTitle}`);
+    if (catalogOnline) doc.text(`Provenienza: ${catalogOnline}`);
     doc.moveDown(1);
 
     doc.fontSize(11).text("Prodotti:", { underline: true });

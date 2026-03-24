@@ -6,7 +6,7 @@ import { requireAdmin } from "@/lib/requireAdmin";
 export async function POST(req: Request) {
   try {
     await requireAdmin(req);
-    const { title } = await req.json();
+    const { title, online_title } = await req.json();
     if (!title) {
       return NextResponse.json({ error: "Titolo mancante" }, { status: 400 });
     }
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     const supabase = supabaseServer();
     const { data, error } = await supabase
       .from("catalogs")
-      .insert({ title, is_active: true })
+      .insert({ title, online_title: online_title || null, is_active: true })
       .select()
       .single();
 

@@ -27,16 +27,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Nessuna foto selezionata" }, { status: 400 });
     }
 
-    // Ordina per nome file (più prevedibile)
     const sorted = [...files].sort((a, b) => (a.name || "").localeCompare(b.name || "", "it", { numeric: true }));
 
     const supabase = supabaseServer();
 
-    // Progressivo di partenza (max + 1)
+    // ✅ FIX: progressivo globale (non per catalogo)
     const { data: last, error: lastErr } = await supabase
       .from("products")
       .select("progressive_number")
-      .eq("catalog_id", catalogId)
       .order("progressive_number", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -58,7 +56,6 @@ export async function POST(req: Request) {
 
       const filePath = `${catalogId}/${Date.now()}_${nextProgressive}_${i}.${safeExt}`;
 
-      // Upload immagine
       const { error: uploadError } = await supabase.storage
         .from("catalog-images")
         .upload(filePath, file, {
@@ -68,7 +65,6 @@ export async function POST(req: Request) {
 
       if (uploadError) throw uploadError;
 
-      // Inserisci prodotto in BOZZA (non pubblicato, senza prezzo)
       const { data: product, error: insErr } = await supabase
         .from("products")
         .insert({
