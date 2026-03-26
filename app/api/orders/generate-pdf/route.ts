@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     // 2) Righe ordine + prodotti (✅ include price_eur)
     const { data: items, error: iErr } = await supabase
       .from("order_items")
-      .select("qty, products(id, progressive_number, box_number, image_path, price_eur, weight_kg)")
+      .select("qty, products(id, progressive_number, box_number, image_path, price_eur, weight_kg, catalogs(title,online_title))")
       .eq("order_id", orderId);
 
     if (iErr) throw iErr;
@@ -90,16 +90,14 @@ export async function POST(req: Request) {
     doc.fontSize(11).text("Prodotti:", { underline: true });
     doc.moveDown(0.5);
 
-    let total = 0;
-
     for (const it of items || []) {
       const p = (it as any).products;
       if (!p) continue;
 
       const qty = Number((it as any).qty ?? 1);
       const price = p.price_eur === null || p.price_eur === undefined ? null : Number(p.price_eur);
-      if (price !== null && Number.isFinite(price)) total += price * qty;
-
+      const prodCatalog = Array.isArray(p.catalogs) ? p.catalogs[0] : p.catalogs;
+      const prodCatalogLabel = prodCatalog?.online_title || prodCatalog?.title || "";
       const imgUrl = `${base}/storage/v1/object/public/catalog-images/${p.image_path}`;
       const yStart = doc.y;
 
@@ -120,11 +118,14 @@ export async function POST(req: Request) {
         yStart
       );
 
-      // Quantità + subtotale
-      const subtotal = price !== null && Number.isFinite(price) ? price * qty : null;
+      // Quantità + provenienza
       doc.fontSize(10)
         .fillColor("gray")
-        .text(`Quantità: ${qty}${subtotal !== null ? `   |   Subtotale: ${eur(subtotal)}` : ""}`, xText, yStart + 18);
+        .text(
+          `Quantità: ${qty}${prodCatalogLabel ? `   |   Provenienza: ${prodCatalogLabel}` : ""}`,
+          xText,
+          yStart + 18
+        );
 
       doc.fillColor("black");
       doc.moveDown(4);
@@ -132,8 +133,6 @@ export async function POST(req: Request) {
       if (doc.y > 740) doc.addPage();
     }
 
-    doc.moveDown(1);
-    doc.fontSize(11).text(`Totale (stimato): ${eur(total)}`, { align: "right" });
     doc.moveDown(0.5);
 
     doc.fontSize(9).fillColor("gray").text("Documento generato automaticamente.", { align: "center" });

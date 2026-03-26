@@ -13,6 +13,7 @@ export const runtime = "nodejs";
 type ParsedRow = {
   progressive_number: number;
   peso_interno_kg: number;
+  specie: string | null;
   rowIndex: number;
 };
 
@@ -53,6 +54,7 @@ export async function POST(req: Request) {
 
       const a = r[0];
       const b = r[1];
+      const c = r[2];
 
       const pn = toNum(a);
       const pk = toNum(b);
@@ -69,7 +71,7 @@ export async function POST(req: Request) {
         continue;
       }
 
-      parsed.push({ progressive_number: pn, peso_interno_kg: Math.round(pk * 100) / 100, rowIndex: i + 1 });
+      parsed.push({ progressive_number: pn, peso_interno_kg: Math.round(pk * 100) / 100, specie: c ? String(c).trim() : null, rowIndex: i + 1 });
     }
 
     if (parsed.length === 0) {
@@ -103,7 +105,7 @@ export async function POST(req: Request) {
         notFound.push({ progressive_number: r.progressive_number, peso_interno_kg: r.peso_interno_kg });
         continue;
       }
-      matched.push({ progressive_number: r.progressive_number, peso_interno_kg: r.peso_interno_kg, productId: p.id });
+      matched.push({ progressive_number: r.progressive_number, peso_interno_kg: r.peso_interno_kg, specie: r.specie, productId: p.id });
     }
 
     const missingInFile = Array.from(prodByProg.values())
@@ -144,7 +146,7 @@ export async function POST(req: Request) {
         batch.map((m) =>
           supabase
             .from("products")
-            .update({ peso_interno_kg: m.peso_interno_kg })
+            .update({ peso_interno_kg: m.peso_interno_kg, specie: m.specie })
             .eq("id", m.productId)
         )
       );

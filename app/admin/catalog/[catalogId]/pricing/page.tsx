@@ -14,6 +14,7 @@ type Row = {
   price_eur: number | null;
   weight_kg: number | null;
   peso_interno_kg: number | null;
+  specie: string | null;
 };
 
 export default function PricingPage(props: { params: Promise<{ catalogId: string }> }) {
@@ -76,7 +77,7 @@ async function load(silent: boolean = false) {
     if (!silent) setMsg("Carico…");
     const { data, error } = await supabaseBrowser()
       .from("products")
-      .select("id,progressive_number,box_number,image_path,is_published,price_eur,weight_kg,peso_interno_kg")
+      .select("id,progressive_number,box_number,image_path,is_published,price_eur,weight_kg,peso_interno_kg,specie")
       .eq("catalog_id", catalogId)
       .order("progressive_number", { ascending: true });
 
@@ -271,7 +272,25 @@ async function load(silent: boolean = false) {
             <div className="mt-2 text-sm text-gray-700">
               <div><b>Cassa</b>: {r.progressive_number}{r.box_number ? ` (${r.box_number})` : ""}</div>
               <div><b>Peso interno</b>: {r.peso_interno_kg == null ? "—" : `${r.peso_interno_kg} kg`}</div>
+              <div><b>Specie</b>: {r.specie || "—"}</div>
             </div>
+
+            <input
+              placeholder="Specie (es. Orata, Spigola...)"
+              value={r.specie ?? ""}
+              onChange={async (e) => {
+                const val = e.target.value;
+                setRows((prev) =>
+                  prev.map((x) => (x.id === r.id ? { ...x, specie: val } : x))
+                );
+                await adminFetch("/api/admin/update-specie", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ productId: r.id, specie: val }),
+                });
+              }}
+              className="mt-2 w-full rounded border px-3 py-2"
+            />
 
             <div className="mt-2 grid grid-cols-2 gap-2">
               <input

@@ -25,8 +25,8 @@ type OrderItemRow = {
   qty: number;
   products: {
     id: string;
-    progressive_number: number | null;
-    box_number: string | null;
+    progressive_number: number;
+    box_number: string;
     image_path?: string | null;
     price_eur: number | null;
   } | null;
@@ -43,9 +43,10 @@ export default function OrdersPrintPage() {
   const router = useRouter();
   const sp = useSearchParams();
 
+  // mode: customer | product
   const mode = (sp.get("mode") || "customer").toLowerCase();
-  const from = (sp.get("from") || "").trim();
-  const to = (sp.get("to") || "").trim();
+  const from = (sp.get("from") || "").trim(); // YYYY-MM-DD
+  const to = (sp.get("to") || "").trim();     // YYYY-MM-DD
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -65,6 +66,7 @@ export default function OrdersPrintPage() {
           .order("created_at", { ascending: true })
           .limit(500);
 
+        // filtro date (solo se entrambe presenti)
         if (from && to) {
           q = q.gte("created_at", `${from}T00:00:00Z`).lte("created_at", `${to}T23:59:59Z`);
         }
@@ -72,7 +74,7 @@ export default function OrdersPrintPage() {
         const { data: oData, error: oErr } = await q;
         if (oErr) throw oErr;
 
-        const o = (oData || []) as Order[];
+        const o = (oData || []) as any as Order[];
         setOrders(o);
 
         const orderIds = o.map((x) => x.id);
@@ -84,14 +86,18 @@ export default function OrdersPrintPage() {
 
         const { data: iData, error: iErr } = await supabaseBrowser()
           .from("order_items")
-          .select("order_id,qty,products(id,progressive_number,box_number,image_path,price_eur)")
+          .select("order_id,qty,products(id,box_number,image_path,price_eur,image_path)")
           .in("order_id", orderIds);
 
         if (iErr) throw iErr;
-        setItems((iData || []) as OrderItemRow[]);
+        const it = (iData || []) as any as OrderItemRow[];
+        setItems(it);
 
+        // lookup aziende per telefono
         try {
-          const phones = Array.from(new Set(o.map((x) => String(x.customer_phone || "").trim()).filter(Boolean)));
+          const phones = Array.from(
+            new Set(o.map((x) => String(x.customer_phone || "").trim()).filter(Boolean))
+          );
 
           if (!phones.length) {
             setCustomerByPhone({});
@@ -130,6 +136,7 @@ export default function OrdersPrintPage() {
   }, [items]);
 
   const customerGroups = useMemo(() => {
+    // Raggruppa per cliente (telefono). Dentro: casse aggregate (somma qty per box)
     const gm: Record<
       string,
       {
@@ -164,20 +171,23 @@ export default function OrdersPrintPage() {
 
         const box = String(pr.box_number || "?");
         const qty = Number(r.qty ?? 1);
-        const price = pr.price_eur === null || pr.price_eur === undefined ? null : Number(pr.price_eur);
+
+        const price =
+          pr.price_eur === null || pr.price_eur === undefined ? null : Number(pr.price_eur);
 
         if (!gm[phone].boxes[box]) {
           gm[phone].boxes[box] = { box, qty: 0, price };
         }
-
         gm[phone].boxes[box].qty += qty;
 
+        // se il prezzo arriva dopo, lo teniamo
         if (gm[phone].boxes[box].price === null && price !== null) {
           gm[phone].boxes[box].price = price;
         }
       }
     }
 
+    
     const arr = Object.values(gm).map((g) => {
       const boxesArr = Object.values(g.boxes).sort((a, b) => Number(a.box) - Number(b.box));
       let tot = 0;
@@ -200,21 +210,23 @@ export default function OrdersPrintPage() {
         (a.name || "").localeCompare(b.name || "") ||
         (a.phone || "").localeCompare(b.phone || "")
     );
-
     return arr;
+
   }, [orders, itemsByOrder, customerByPhone]);
 
+
   const productView = useMemo(() => {
+    // productId -> { box, prog, price, customers: [{name, company, phone, qty}] }
     const pm: Record<
       string,
       {
-        productId: string;
-        box: string;
-        prog: string | number;
-        price: number | null;
-        customers: { name: string; company?: string | null; phone: string; qty: number }[];
-        imagePath?: string | null;
-      }
+          productId: string;
+          box: string;
+          prog: string | number;
+          price: number | null;
+          customers: { name: string; company?: string | null; phone: string; qty: number }[];
+          imagePath?: string | null;
+        }
     > = {};
 
     const orderById: Record<string, Order> = {};
@@ -229,44 +241,25 @@ export default function OrdersPrintPage() {
 
       const phone = String(ord.customer_phone || "").trim();
       const company = customerByPhone[phone]?.company ?? null;
-      const qty = Number(row.qty ?? 1);
 
       if (!pm[p.id]) {
         pm[p.id] = {
           productId: p.id,
           box: p.box_number ?? "?",
-          prog: p.progressive_number ?? "?",
+          prog: (p.progressive_number ?? "?") as any,
           price: p.price_eur ?? null,
           customers: [],
-          imagePath: p.image_path ?? null,
+          imagePath: (p as any).image_path ?? null,
         };
-      }
-
-      pm[p.id].customers.push({
-        name: String(ord.customer_name || "").trim() || "Cliente",
-        company,
-        phone,
-        qty,
-      });
-    }
-
+}
     const arr = Object.values(pm);
-
-    arr.sort((a, b) => {
-      const pa = Number(a.prog);
-      const pb = Number(b.prog);
-      if (Number.isFinite(pa) && Number.isFinite(pb)) return pa - pb;
-      return String(a.box).localeCompare(String(b.box));
-    });
-
     return arr;
+  }
   }, [orders, items, customerByPhone]);
 
   const title = useMemo(() => {
     const range = from && to ? `(${from} → ${to})` : "(tutti)";
-    return mode === "product"
-      ? `Stampa ordini per prodotto ${range}`
-      : `Stampa ordini per cliente ${range}`;
+    return mode === "product" ? `Stampa ordini per prodotto ${range}` : `Stampa ordini per cliente ${range}`;
   }, [mode, from, to]);
 
   if (loading) {
@@ -283,17 +276,7 @@ export default function OrdersPrintPage() {
         <div className="text-lg font-bold">Errore</div>
         <div className="mt-2 text-sm text-red-700">{err}</div>
         <div className="mt-4 flex gap-2">
-          <button
-            className="rounded-lg border bg-white px-4 py-2 font-semibold"
-            onClick={() => {
-              try {
-                router.push("/admin/orders");
-              } catch {}
-              try {
-                window.close();
-              } catch {}
-            }}
-          >
+          <button className="rounded-lg border bg-white px-4 py-2 font-semibold" onClick={() => { try { router.push("/admin/orders"); } catch {} try { window.close(); } catch {} }}>
             Chiudi
           </button>
         </div>
@@ -304,17 +287,7 @@ export default function OrdersPrintPage() {
   return (
     <div className="mx-auto max-w-5xl p-6">
       <div className="mb-4 flex items-center justify-between gap-2 print:hidden">
-        <button
-          className="rounded-lg border bg-white px-4 py-2 font-semibold"
-          onClick={() => {
-            try {
-              router.push("/admin/orders");
-            } catch {}
-            try {
-              window.close();
-            } catch {}
-          }}
-        >
+        <button className="rounded-lg border bg-white px-4 py-2 font-semibold" onClick={() => { try { router.push("/admin/orders"); } catch {} try { window.close(); } catch {} }}>
           Chiudi
         </button>
         <div className="flex gap-2">
@@ -363,16 +336,11 @@ export default function OrdersPrintPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {productView.map((p) => (
+          {(productView ?? []).map((p) => (
             <div key={p.productId} className="rounded-2xl border bg-white p-4">
               <div className="flex items-baseline justify-between gap-2">
                 <div className="text-lg font-bold">
-                  <span className="inline-flex items-center gap-2">
-                    <img src={imgUrl(p.imagePath)} className="h-12 w-12 rounded border object-cover" />
-                    <span>
-                      Cassa {p.box} {p.prog !== "?" ? `— Prog ${p.prog}` : ""}
-                    </span>
-                  </span>
+                  <span className="inline-flex items-center gap-2"><img src={imgUrl(p.imagePath)} className="h-12 w-12 rounded border object-cover" /><span><span className="inline-flex items-center gap-2"><img src={imgUrl(p.imagePath)} className="h-12 w-12 rounded border object-cover" /><span>Cassa {p.box}</span></span></span></span>
                 </div>
                 <div className="text-sm font-semibold">{eur(p.price)}</div>
               </div>
@@ -387,10 +355,10 @@ export default function OrdersPrintPage() {
             </div>
           ))}
 
-          {productView.length === 0 && (
-            <div className="text-sm text-gray-600">Nessun ordine nel periodo selezionato.</div>
-          )}
-        </div>
+          {((productView ?? []).length === 0) && (
+  <div className="text-sm text-gray-600">Nessun ordine nel periodo selezionato.</div>
+)}
+</div>
       )}
     </div>
   );

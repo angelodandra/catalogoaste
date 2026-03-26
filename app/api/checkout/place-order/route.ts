@@ -49,8 +49,9 @@ export async function POST(req: Request) {
     const cookieStore = await cookies();
     const customerPhoneRaw = cookieStore.get("customer_phone")?.value || "";
     const items = (body.items || []) as Item[];
+    const sellerCustomerName = body.customerName ? String(body.customerName).trim() : "";
 
-    if (!catalogId || !customerPhoneRaw.trim() || items.length === 0) {
+    if (!customerPhoneRaw.trim() || items.length === 0) {
       return NextResponse.json({ error: "Dati mancanti" }, { status: 400 });
     }
 
@@ -79,7 +80,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const customerName = String(customer.name || "").trim();
+    let customerName = String(customer.name || "").trim();
+    if (sellerCustomerName) customerName = sellerCustomerName;
     if (!customerName) {
       return NextResponse.json({ error: "Cliente registrato ma senza nome." }, { status: 400 });
     }

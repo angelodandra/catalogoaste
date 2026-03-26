@@ -427,12 +427,17 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
             disabled={loading || !fromDate || !toDate}
             onClick={() => {
               const qs = new URLSearchParams({ from: fromDate, to: toDate });
+              const w = window.open("", "_blank");
               (async () => {
                 const res = await adminFetch(`/api/admin/orders/prep-pdf-bulk?${qs.toString()}`);
-                if (!res.ok) { alert("Errore stampa"); return; }
+                if (!res.ok) {
+                  if (w) w.close();
+                  alert("Errore stampa");
+                  return;
+                }
                 const blob = await res.blob();
                 const url = URL.createObjectURL(blob);
-                window.open(url, "_blank");
+                if (w) w.location.href = url;
                 setTimeout(() => URL.revokeObjectURL(url), 60_000);
               })();
             }}

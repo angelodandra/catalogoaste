@@ -9,6 +9,7 @@ type Catalog = {
   title: string;
   online_title: string | null;
   is_active: boolean;
+  is_visible: boolean;
   owner_phone: string | null;
   created_at: string;
 };
@@ -24,7 +25,7 @@ export default function AdminPage() {
   async function load() {
     const { data, error } = await supabaseBrowser()
       .from("catalogs")
-      .select("id,title,online_title,is_active,owner_phone,created_at")
+      .select("id,title,online_title,is_active,is_visible,owner_phone,created_at")
       .order("created_at", { ascending: false });
 
     if (!error) setCatalogs((data as any) || []);
@@ -266,6 +267,22 @@ export default function AdminPage() {
                 >
                   Copia link
                 </button>
+
+                <label className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-semibold cursor-pointer hover:bg-gray-50 active:scale-[0.99] disabled:cursor-not-allowed">
+                  <input
+                    type="checkbox"
+                    checked={!!c.is_visible}
+                    onChange={async () => {
+                      await adminFetch("/api/admin/catalog/toggle-visible", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ id: c.id, value: !c.is_visible }),
+                      });
+                      await load();
+                    }}
+                  />
+                  Visibile
+                </label>
 
                 <a
                   href={`/admin/catalog/${c.id}/pricing`}

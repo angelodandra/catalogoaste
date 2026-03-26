@@ -13,6 +13,8 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
   const [ready, setReady] = useState(false);
 
   const [customer, setCustomer] = useState<any>(null);
+  const [isSeller, setIsSeller] = useState(false);
+  const [manualName, setManualName] = useState("");
 
 
   const [loading, setLoading] = useState(false);
@@ -40,7 +42,10 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
           return;
         }
         const j = await r.json();
-        if (r.ok && j?.customer) setCustomer(j.customer);
+        if (r.ok && j?.customer) {
+          setCustomer(j.customer);
+          if ((j.customer.name || "").toLowerCase().includes("venditore")) setIsSeller(true);
+        }
       } catch {}
     })();
   }, []);
@@ -63,9 +68,16 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
 
     setLoading(true);
     try {
+      if (isSeller && !manualName.trim()) {
+        setMsg("Inserisci nome cliente");
+        setLoading(false);
+        return;
+      }
+
       const payload = {
         catalogId,
         items: items.map((it) => ({ productId: it.product.id, qty: it.qty })),
+        customerName: isSeller ? manualName : undefined,
       };
 
       const res = await fetch("/api/checkout/place-order", {
@@ -120,7 +132,16 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
           <div className="mt-4 rounded-2xl border bg-white p-4 shadow-sm">
             <div className="text-sm font-semibold">Cliente</div>
             <div className="mt-2 text-sm text-gray-700">
-              {customer ? (
+              {isSeller ? (
+                <div className="mt-2">
+                  <input
+                    className="w-full rounded-lg border px-3 py-2 text-sm"
+                    placeholder="Nome cliente finale"
+                    value={manualName}
+                    onChange={(e) => setManualName(e.target.value)}
+                  />
+                </div>
+              ) : customer ? (
                 <>
                   <div><b>{customer.name}</b> {customer.company ? `(${customer.company})` : ""}</div>
                   <div className="font-mono">{customer.phone}</div>

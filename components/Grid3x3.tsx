@@ -48,7 +48,7 @@ export function Grid3x3(props: {
                   <img src={p.image_url} className="h-32 w-full rounded-xl object-cover sm:h-44 lg:h-56" />
                 </button>
 
-                <div className="absolute left-2 top-2 rounded-md bg-black/70 px-2 py-1 text-xs font-bold text-white">
+                <div className="absolute left-2 top-2 rounded-md bg-white/90 px-2 py-0.5 text-[11px] font-semibold text-black">
                   {p.progressive_number}
                 </div>
 
@@ -57,20 +57,18 @@ export function Grid3x3(props: {
                     <div
                       className={`w-fit rounded-md px-2 py-1 text-[11px] font-bold text-white ${
                         p.catalog_label.toLowerCase().includes("spagna")
-                          ? "bg-amber-600"
+                          ? "bg-sky-500"
                           : p.catalog_label.toLowerCase().includes("francia")
-                          ? "bg-emerald-600"
+                          ? "bg-sky-500"
                           : p.catalog_label.toLowerCase().includes("civitavecchia")
-                          ? "bg-sky-600"
-                          : "bg-slate-700"
+                          ? "bg-sky-500"
+                          : "bg-sky-500"
                       }`}
                     >
                       {p.catalog_label}
                     </div>
                   ) : null}
-                  <div className="w-fit rounded-md bg-white/90 px-2 py-1 text-xs font-semibold">
-                    Cassa {p.box_number}
-                  </div>
+                  
                 </div>
 
                 {showPrices && p.price_eur !== undefined && p.price_eur !== null && (
@@ -86,9 +84,9 @@ export function Grid3x3(props: {
                 )}
 
                 {isSelected && !p.is_sold && (
-                  <div className="absolute inset-x-2 top-12 flex justify-center">
+                  <div className="absolute inset-x-0 bottom-14 flex justify-center">
                     <div className="rounded-md bg-green-600 px-2 py-1 text-[11px] font-extrabold text-white shadow">
-                      NEL TUO ORDINE
+                      PRODOTTO SELEZIONATO
                     </div>
                   </div>
                 )}

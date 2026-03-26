@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { getSellerByPhone } from "@/lib/sellers";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,22 @@ export async function GET() {
     const p = cookieStore.get("customer_phone")?.value || "";
     if (!p) return NextResponse.json({ ok: false, error: "not_logged" }, { status: 401 });
 
+    // 👉 PRIMA controlla venditori
+    const seller = getSellerByPhone(p);
+    if (seller) {
+      return NextResponse.json({
+        ok: true,
+        customer: {
+          name: seller.name + " (VENDITORE)",
+          company: null,
+          phone: seller.phone,
+          status: "active",
+          role: "seller",
+        },
+      });
+    }
+
+    // 👉 poi clienti normali
     const supabase = supabaseServer();
     const { data, error } = await supabase
       .from("customers")
@@ -23,16 +40,13 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: "not_active" }, { status: 403 });
     }
 
-    
-    // === LOGIN LOG (customer_logins) ===
     try {
       await supabase.from("customer_logins").insert({ customer_phone: p });
     } catch (e) {
       console.error("LOGIN LOG ERROR", e);
     }
-    // === END LOGIN LOG ===
 
-return NextResponse.json({ ok: true, customer: data });
+    return NextResponse.json({ ok: true, customer: data });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || "server_error" }, { status: 500 });
   }

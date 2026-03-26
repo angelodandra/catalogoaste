@@ -1,0 +1,315 @@
+diff --git a/app/api/admin/publish-catalog/route.ts b/app/api/admin/publish-catalog/route.ts
+index 750253c..fceb34c 100644
+--- a/app/api/admin/publish-catalog/route.ts
++++ b/app/api/admin/publish-catalog/route.ts
+@@ -1,6 +1,5 @@
+ import { NextResponse } from "next/server";
+ import { supabaseServer } from "@/lib/supabaseServer";
+-
+ import { requireAdmin } from "@/lib/requireAdmin";
+ 
+ export const runtime = "nodejs";
+@@ -13,13 +12,18 @@ export async function POST(req: Request) {
+ 
+     const supabase = supabaseServer();
+ 
+-    const { error } = await supabase
++    // pubblica prodotti
++    await supabase
+       .from("products")
+       .update({ is_published: true })
+       .eq("catalog_id", catalogId)
+       .not("price_eur", "is", null);
+ 
+-    if (error) throw error;
++    // rende visibile il catalogo nella vetrina unica
++    await supabase
++      .from("catalogs")
++      .update({ is_visible_today: true })
++      .eq("id", catalogId);
+ 
+     return NextResponse.json({ ok: true });
+   } catch (e: any) {
+diff --git a/app/api/orders/generate-pdf/route.ts b/app/api/orders/generate-pdf/route.ts
+index 363c273..a22a1e8 100644
+--- a/app/api/orders/generate-pdf/route.ts
++++ b/app/api/orders/generate-pdf/route.ts
+@@ -80,8 +80,9 @@ export async function POST(req: Request) {
+     doc.text(`Data: ${new Date(order.created_at).toLocaleString("it-IT")}`);
+ 
+     // Catalogo / Provenienza
+-    const catalogTitle = order.catalogs?.title || "";
+-    const catalogOnline = order.catalogs?.online_title || "";
++    const catalogRow = Array.isArray(order.catalogs) ? order.catalogs[0] : order.catalogs;
++    const catalogTitle = catalogRow?.title || "";
++    const catalogOnline = catalogRow?.online_title || "";
+ 
+     if (catalogTitle) doc.text(`Catalogo: ${catalogTitle}`);
+     if (catalogOnline) doc.text(`Provenienza: ${catalogOnline}`);
+diff --git a/app/catalog/[catalogId]/page.tsx b/app/catalog/[catalogId]/page.tsx
+index 942158f..a761a3e 100644
+--- a/app/catalog/[catalogId]/page.tsx
++++ b/app/catalog/[catalogId]/page.tsx
+@@ -8,18 +8,23 @@ import FloatingCartButton from "@/components/FloatingCartButton";
+ import CartDrawer from "@/components/CartDrawer";
+ import { useRouter } from "next/navigation";
+ 
++type CatalogMeta = {
++  title?: string | null;
++  online_title?: string | null;
++};
+ 
+ type CartItem = { product: ProductUI; qty: number };
++
+ export default function CatalogClientPage(props: { params: Promise<{ catalogId: string }> }) {
+   const { catalogId } = use(props.params);
+   const router = useRouter();
+ 
+   const [products, setProducts] = useState<ProductUI[]>([]);
+   const [cartOpen, setCartOpen] = useState(false);
+-
+   const [cart, setCart] = useState<CartItem[]>([]);
+   const [authorized, setAuthorized] = useState(false);
+   const [cartReady, setCartReady] = useState(false);
++  const [catalogMeta, setCatalogMeta] = useState<CatalogMeta | null>(null);
+ 
+   useEffect(() => {
+     try {
+@@ -39,16 +44,29 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId:
+   }, [cart, catalogId, cartReady]);
+ 
+   async function load() {
++    const { data: catalogData } = await supabaseBrowser()
++      .from("catalogs")
++      .select("title, online_title")
++      .eq("id", catalogId)
++      .maybeSingle();
++
++    if (catalogData) setCatalogMeta(catalogData as CatalogMeta);
++
+     const { data, error } = await supabaseBrowser()
+       .from("products")
+       .select("id, progressive_number, box_number, image_path, is_sold, is_published, price_eur, weight_kg")
+       .eq("catalog_id", catalogId)
+-      .eq("is_published", true) // ✅ clienti vedono SOLO pubblicati
++      .eq("is_published", true)
+       .order("progressive_number", { ascending: true });
+ 
+     if (error) return;
+ 
+     const base = process.env.NEXT_PUBLIC_SUPABASE_URL!;
++    const label =
++      (catalogData as any)?.online_title ||
++      (catalogData as any)?.title ||
++      null;
++
+     const mapped: ProductUI[] = (data || []).map((p: any) => ({
+       id: p.id,
+       progressive_number: p.progressive_number,
+@@ -57,6 +75,7 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId:
+       is_sold: p.is_sold,
+       price_eur: p.price_eur,
+       weight_kg: p.weight_kg ?? null,
++      catalog_label: label,
+     }));
+ 
+     setProducts(mapped);
+@@ -65,14 +84,12 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId:
+   useEffect(() => {
+     load();
+ 
+-    // realtime: se cambia is_sold o price/publish, aggiorna
+     const ch = supabaseBrowser()
+       .channel(`products-${catalogId}`)
+       .on(
+         "postgres_changes",
+         { event: "*", schema: "public", table: "products", filter: `catalog_id=eq.${catalogId}` },
+         () => {
+-          // più semplice: ricarico lista (visto che filtriamo su is_published)
+           load();
+         }
+       )
+@@ -81,7 +98,6 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId:
+     return () => {
+       supabaseBrowser().removeChannel(ch);
+     };
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [catalogId]);
+ 
+   function addToCart(p: ProductUI) {
+@@ -97,7 +113,6 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId:
+       }
+       return [...prev, { product: p, qty: 1 }];
+     });
+-    setCartOpen(true);
+   }
+ 
+   function setQty(productId: string, qty: number) {
+@@ -109,15 +124,23 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId:
+   }
+ 
+   const cartCount = cart.length;
+-return (
++  const catalogTitle = catalogMeta?.online_title || catalogMeta?.title || "Catalogo";
++
++  return (
+     <div className="mx-auto max-w-5xl p-4">
+-      
+       <AccessGate onAuthorizedChange={setAuthorized} />
+-<div className="mb-6 flex justify-center">
++
++      <div className="mb-6 flex justify-center">
+         <img src="/logo.jpg" alt="Logo azienda" className="h-20 w-auto" />
+       </div>
++
+       <div className="flex items-center justify-between gap-3">
+-        <div className="text-xl font-bold">Catalogo</div>
++        <div>
++          <div className="text-xl font-bold">{catalogTitle}</div>
++          {catalogMeta?.title && catalogMeta?.online_title && catalogMeta.title !== catalogMeta.online_title ? (
++            <div className="text-sm text-gray-600">{catalogMeta.title}</div>
++          ) : null}
++        </div>
+ 
+         <button
+           className="rounded-md bg-black px-3 py-2 text-white disabled:opacity-50"
+@@ -129,10 +152,16 @@ return (
+       </div>
+ 
+       <div className="mt-4">
+-        <Grid3x3 products={products} onAdd={addToCart} showPrices={authorized} canAdd={authorized} />
++        <Grid3x3
++          products={products}
++          onAdd={addToCart}
++          showPrices={authorized}
++          canAdd={authorized}
++          selectedIds={cart.map((x) => x.product.id)}
++        />
+ 
+         <FloatingCartButton count={cartCount} onOpen={() => setCartOpen(true)} />
+-</div>
++      </div>
+ 
+       <CartDrawer
+         open={cartOpen}
+diff --git a/app/catalog/page.tsx b/app/catalog/page.tsx
+index 0c2ce24..e7ad11d 100644
+--- a/app/catalog/page.tsx
++++ b/app/catalog/page.tsx
+@@ -1,102 +1,25 @@
+-"use client";
++import { redirect } from "next/navigation";
++import { supabaseServer } from "@/lib/supabaseServer";
+ 
+-import { useEffect, useState } from "react";
+-import { supabaseBrowser } from "@/lib/supabaseBrowser";
+-import { Grid3x3, type ProductUI } from "@/components/Grid3x3";
++export const runtime = "nodejs";
+ 
+-type ProductRow = {
+-  id: string;
+-  progressive_number: number | null;
+-  box_number: string | null;
+-  image_path: string | null;
+-  is_sold: boolean | null;
+-  price_eur: number | null;
+-  weight_kg: number | null;
+-  catalog_id: string;
+-  catalogs?: {
+-    title?: string | null;
+-    online_title?: string | null;
+-  } | null;
+-};
++export default async function CatalogIndexPage() {
++  const supabase = supabaseServer();
+ 
+-export default function CatalogIndexPage() {
+-  const [products, setProducts] = useState<ProductUI[]>([]);
+-  const [stats, setStats] = useState<{
+-    total: number;
+-    maxProgressive: number;
+-    activeCatalogIds: string[];
+-  }>({
+-    total: 0,
+-    maxProgressive: 0,
+-    activeCatalogIds: [],
+-  });
++  const { data } = await supabase
++    .from("catalogs")
++    .select("id")
++    .eq("is_active", true)
++    .order("created_at", { ascending: false })
++    .limit(1);
+ 
+-  async function load() {
+-    const { data: catalogs } = await supabaseBrowser()
+-      .from("catalogs")
+-      .select("id")
+-      .eq("is_active", true)
+-      .order("created_at", { ascending: false });
++  const id = data?.[0]?.id as string | undefined;
+ 
+-    const activeCatalogIds = (catalogs || []).map((c: any) => c.id);
+-
+-    const { data, error } = await supabaseBrowser()
+-      .from("products")
+-      .select("id, progressive_number, box_number, image_path, is_sold, price_eur, weight_kg, catalog_id, catalogs(title, online_title)")
+-      .in("catalog_id", activeCatalogIds)
+-      .eq("is_published", true)
+-      .order("progressive_number", { ascending: true });
+-
+-    if (error) return;
+-
+-    const rows = (data || []) as ProductRow[];
+-    const maxProgressive = rows.reduce(
+-      (m, p) => Math.max(m, Number(p.progressive_number || 0)),
+-      0
+-    );
+-
+-    setStats({
+-      total: rows.length,
+-      maxProgressive,
+-      activeCatalogIds,
+-    });
+-
+-    const base = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+-
+-    const mapped: ProductUI[] = rows.map((p) => ({
+-      id: p.id,
+-      progressive_number: p.progressive_number ?? 0,
+-      box_number: p.box_number ?? "",
+-      image_url: `${base}/storage/v1/object/public/catalog-images/${p.image_path}`,
+-      is_sold: !!p.is_sold,
+-      price_eur: p.price_eur,
+-      weight_kg: p.weight_kg ?? null,
+-      catalog_label: p.catalogs?.online_title || p.catalogs?.title || null,
+-    }));
+-
+-    setProducts(mapped);
+-  }
+-
+-  useEffect(() => {
+-    load();
+-  }, []);
++  if (id) redirect(`/catalog/${id}`);
+ 
+   return (
+     <div className="mx-auto max-w-5xl p-4">
+-      <div className="mb-2 text-xl font-bold">Disponibile oggi</div>
+-
+-      <div className="mb-4 rounded-lg border bg-yellow-50 p-3 text-sm">
+-        <div>Prodotti visibili: {stats.total}</div>
+-        <div>Primo progressivo libero: {stats.maxProgressive + 1}</div>
+-      </div>
+-
+-      <Grid3x3
+-        products={products}
+-        onAdd={() => {}}
+-        showPrices={true}
+-        canAdd={false}
+-        selectedIds={[]}
+-      />
++      <div className="text-xl font-bold">Nessun catalogo attivo</div>
+     </div>
+   );
+ }

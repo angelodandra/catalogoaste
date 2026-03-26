@@ -41,7 +41,7 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
   async function load() {
     const { data, error } = await supabaseBrowser()
       .from("products")
-      .select("id, progressive_number, box_number, image_path, is_sold, is_published, price_eur, weight_kg")
+      .select("id, progressive_number, box_number, image_path, is_sold, is_published, price_eur, weight_kg, catalogs(title, online_title)")
       .eq("catalog_id", catalogId)
       .eq("is_published", true) // ✅ clienti vedono SOLO pubblicati
       .order("progressive_number", { ascending: true });
@@ -49,7 +49,9 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
     if (error) return;
 
     const base = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const mapped: ProductUI[] = (data || []).map((p: any) => ({
+    const mapped: ProductUI[] = (data || []).map((p: any) => {
+      const c = Array.isArray(p.catalogs) ? p.catalogs[0] : p.catalogs;
+      return {
       id: p.id,
       progressive_number: p.progressive_number,
       box_number: p.box_number,
@@ -57,7 +59,9 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
       is_sold: p.is_sold,
       price_eur: p.price_eur,
       weight_kg: p.weight_kg ?? null,
-    }));
+      catalog_label: c?.online_title || c?.title || null,
+    };
+    });
 
     setProducts(mapped);
   }
@@ -97,7 +101,6 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
       }
       return [...prev, { product: p, qty: 1 }];
     });
-    setCartOpen(true);
   }
 
   function setQty(productId: string, qty: number) {
@@ -129,7 +132,7 @@ return (
       </div>
 
       <div className="mt-4">
-        <Grid3x3 products={products} onAdd={addToCart} showPrices={authorized} canAdd={authorized} />
+        <Grid3x3 products={products} onAdd={addToCart} showPrices={authorized} canAdd={authorized} selectedIds={cart.map(x => x.product.id)} />
 
         <FloatingCartButton count={cartCount} onOpen={() => setCartOpen(true)} />
 </div>

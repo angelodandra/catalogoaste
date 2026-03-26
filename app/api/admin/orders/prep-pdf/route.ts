@@ -56,7 +56,7 @@ export async function GET(req: Request) {
 
     const { data: items, error: iErr } = await supabase
       .from("order_items")
-      .select("qty, products(id, box_number, image_path, price_eur, weight_kg, peso_interno_kg)")
+      .select("qty, products(id, box_number, image_path, price_eur, weight_kg, peso_interno_kg, specie, catalogs(title,online_title))")
       .eq("order_id", orderId);
     if (iErr) throw iErr;
 
@@ -119,6 +119,10 @@ export async function GET(req: Request) {
         price: p?.price_eur ?? null,
         weight: p?.weight_kg ?? null,
         internal_weight: (p as any)?.peso_interno_kg ?? null,
+        prov: (Array.isArray((p as any)?.catalogs) ? (p as any).catalogs[0] : (p as any)?.catalogs)?.online_title
+              || (Array.isArray((p as any)?.catalogs) ? (p as any).catalogs[0] : (p as any)?.catalogs)?.title
+              || "",
+        specie: safeStr((p as any)?.specie).trim(),
       };
     });
 
@@ -158,20 +162,20 @@ export async function GET(req: Request) {
 
       const xText = imgX + thumb + 14;
 
-      doc.font("Helvetica-Bold").fontSize(14).text(`Cassa ${r.box}`, xText, y + 6);
+      doc.font("Helvetica-Bold").fontSize(14).text(`Cassa ${r.box}${r.specie ? `: ${r.specie.toUpperCase()}` : ""}`, xText, y + 6);
 
       doc.font("Helvetica").fontSize(10).fillColor("gray");
       const wInt = (r as any).internal_weight;
       const pesoIntTxt = wInt !== null && wInt !== undefined ? `   |   Peso int: ${Number(wInt).toFixed(2)} kg` : "";
       const pesoPubTxt = r.weight !== null && r.weight !== undefined ? `   |   Peso: ≈ ${Number(r.weight).toFixed(2)} kg` : "";
-      doc.text(`Quantità: ${r.qty}` + pesoIntTxt + pesoPubTxt, xText, y + 30);
+      const provTxt = r.prov ? `   |   Provenienza: ${r.prov}` : "";
+      doc.text(`Quantità: ${r.qty}` + pesoIntTxt + pesoPubTxt + provTxt, xText, y + 30);
 
       const price = r.price === null || r.price === undefined ? null : Number(r.price);
-      const subtotal = price !== null && Number.isFinite(price) ? price * r.qty : null;
-      doc.text(`Prezzo: ${eur(price)}${subtotal !== null ? `  |  Subtotale: ${eur(subtotal)}` : ""}`, xText, y + 46);
+      doc.text(`Prezzo: ${eur(price)}`, xText, y + 46);
       doc.fillColor("black");
 
-      if (subtotal !== null) total += subtotal;
+      if (price !== null && Number.isFinite(price)) total += price * r.qty;
 
       doc.strokeColor("#e5e5e5").lineWidth(1);
       doc.moveTo(left, y + lineH).lineTo(left + usableW, y + lineH).stroke();
@@ -180,8 +184,7 @@ export async function GET(req: Request) {
       doc.y = y + lineH + 6;
     }
 
-    doc.moveDown(0.5);
-    doc.font("Helvetica-Bold").fontSize(12).text(`Totale (stimato): ${eur(total)}`, { align: "right" });
+
     doc.moveDown(0.2);
     doc.font("Helvetica").fontSize(9).fillColor("gray").text("Spunte: usa la casella a sinistra per segnare la cassa preparata.", {
       align: "center",

@@ -70,7 +70,7 @@ export async function GET(req: Request) {
 
     const { data: itemsData, error: iErr } = await supabase
       .from("order_items")
-      .select("order_id,qty,products(id,box_number,image_path,price_eur)")
+      .select("order_id,qty,products(id,box_number,image_path,price_eur,weight_kg,peso_interno_kg,specie,catalogs(title,online_title))")
       .in("order_id", orderIds);
 
     if (iErr) throw iErr;
@@ -168,17 +168,16 @@ export async function GET(req: Request) {
 
         const xText = imgX + thumb + 14;
 
-        doc.font("Helvetica-Bold").fontSize(14).text(`Cassa ${r.box}`, xText, y + 6);
+        doc.font("Helvetica-Bold").fontSize(14).text(`Cassa ${r.box}${r.specie ? `: ${r.specie.toUpperCase()}` : ""}`, xText, y + 6);
 
         doc.font("Helvetica").fontSize(10).fillColor("gray");
-        doc.text(`Quantità: ${r.qty}`, xText, y + 30);
-
-        const price = r.price === null || r.price === undefined ? null : Number(r.price);
-        const subtotal = price !== null && Number.isFinite(price) ? price * r.qty : null;
-        doc.text(`Prezzo: ${eur(price)}${subtotal !== null ? `  |  Subtotale: ${eur(subtotal)}` : ""}`, xText, y + 46);
+        doc.text(
+          `Quantità: ${r.qty}${r.internal_weight !== null && r.internal_weight !== undefined ? `   |   Peso int: ${Number(r.internal_weight).toFixed(2)} kg` : ""}${r.weight_kg !== null && r.weight_kg !== undefined ? `   |   Peso: ${Number(r.weight_kg).toFixed(2)} kg` : ""}${r.prov ? `   |   Provenienza: ${r.prov}` : ""}`,
+          xText,
+          y + 30
+        );
+        doc.text(`Prezzo: ${eur(r.price)}`, xText, y + 46);
         doc.fillColor("black");
-
-        if (subtotal !== null) total += subtotal;
 
         doc.strokeColor("#e5e5e5").lineWidth(1);
         doc.moveTo(left, y + lineH).lineTo(left + usableW, y + lineH).stroke();
@@ -188,8 +187,7 @@ export async function GET(req: Request) {
       }
 
       doc.moveDown(0.2);
-      doc.font("Helvetica-Bold").fontSize(11).text(`Totale (stimato): ${eur(total)}`, { align: "right" });
-      doc.moveDown(0.6);
+
 
       doc.strokeColor("#cccccc").lineWidth(1);
       doc.moveTo(left, doc.y).lineTo(left + usableW, doc.y).stroke();
@@ -206,16 +204,23 @@ export async function GET(req: Request) {
       const orderId = safeStr(it.order_id).trim();
       if (!itemsByOrder[orderId]) itemsByOrder[orderId] = [];
       const p = it.products;
+      const prodCatalog = Array.isArray(p?.catalogs) ? p.catalogs[0] : p?.catalogs;
+      const prov = prodCatalog?.online_title || prodCatalog?.title || "";
+
       itemsByOrder[orderId].push({
         productId: safeStr(p?.id ?? ""),
         qty: Number(it.qty ?? 1),
         box: safeStr(p?.box_number ?? "?"),
         image_path: safeStr(p?.image_path ?? ""),
         price: p?.price_eur ?? null,
+        weight_kg: p?.weight_kg ?? null,
+        internal_weight: p?.peso_interno_kg ?? null,
+        specie: (p?.specie || "").toString().trim(),
+        prov,
       });
     }
 
-    // customerKey = telefono normalizzato
+    // customerKey = nome cliente + telefono (così i venditori con lo stesso telefono restano separati)
     const groups: Record<
       string,
       {
@@ -230,14 +235,15 @@ export async function GET(req: Request) {
 
     for (const o of orders) {
       const phone = safeStr(o.customer_phone).trim();
-      if (!phone) continue;
-
-      const company = companyByPhone[phone] || "";
       const name = safeStr(o.customer_name).trim();
+      if (!phone && !name) continue;
+
+      const key = `${name}__${phone}`;
+      const company = companyByPhone[phone] || "";
       const created = safeStr(o.created_at);
 
-      if (!groups[phone]) {
-        groups[phone] = {
+      if (!groups[key]) {
+        groups[key] = {
           customer_name: name || phone,
           customer_phone: phone,
           company,
@@ -246,16 +252,14 @@ export async function GET(req: Request) {
           rows: [],
         };
       } else {
-        // aggiorna nome/company se mancanti
-        if (!groups[phone].customer_name && name) groups[phone].customer_name = name;
-        if (!groups[phone].company && company) groups[phone].company = company;
-        // range date
-        if (created && created < groups[phone].created_min) groups[phone].created_min = created;
-        if (created && created > groups[phone].created_max) groups[phone].created_max = created;
+        if (!groups[key].customer_name && name) groups[key].customer_name = name;
+        if (!groups[key].company && company) groups[key].company = company;
+        if (created && created < groups[key].created_min) groups[key].created_min = created;
+        if (created && created > groups[key].created_max) groups[key].created_max = created;
       }
 
       const rows = itemsByOrder[safeStr(o.id).trim()] || [];
-      groups[phone].rows.push(...rows);
+      groups[key].rows.push(...rows);
     }
 
     // ordina + dedup per cliente
