@@ -125,6 +125,7 @@ async function load(silent: boolean = false) {
           productId: r.id,
           price: Number.isFinite(price) ? price : null,
           weightKg: Number.isFinite(weightKg) ? weightKg : null,
+          // pesoInternoKg gestito dall'import CSV, non modificabile qui
         };
       });
 
@@ -270,8 +271,12 @@ async function load(silent: boolean = false) {
             />
 
             <div className="mt-2 text-sm text-gray-700">
-              <div><b>Cassa</b>: {r.progressive_number}{r.box_number ? ` (${r.box_number})` : ""}</div>
-              <div><b>Peso interno</b>: {r.peso_interno_kg == null ? "—" : `${r.peso_interno_kg} kg`}</div>
+              <div>
+                <b>Cassa</b>: {r.progressive_number}{r.box_number ? ` (${r.box_number})` : ""}
+                {r.peso_interno_kg != null && (
+                  <span className="ml-2 text-gray-400">· int. {r.peso_interno_kg} kg</span>
+                )}
+              </div>
               <div><b>Specie</b>: {r.specie || "—"}</div>
             </div>
 
@@ -300,7 +305,7 @@ async function load(silent: boolean = false) {
                 className="rounded border px-3 py-2"
               />
               <input
-                placeholder="Peso kg"
+                placeholder="Peso pub. kg"
                 value={weights[r.id] ?? ""}
                 onChange={(e) => setWeights((p) => ({ ...p, [r.id]: e.target.value }))}
                 className="rounded border px-3 py-2"

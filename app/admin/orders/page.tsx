@@ -330,6 +330,13 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
           ← Torna in Admin
         </a>
 
+        <a
+          className="rounded-lg bg-black px-4 py-2 font-semibold text-white"
+          href="/admin/orders/fulfillment"
+        >
+          📦 Evasione ordini
+        </a>
+
         <button
           type="button"
           className="rounded-lg border bg-white px-4 py-2 font-semibold disabled:opacity-60"
@@ -381,7 +388,7 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
             disabled={loading}
             onClick={() => window.open(`/admin/orders/print?mode=all&type=byOrder`, "_blank")}
           >
-            Stampa tutti (cliente / casse / prezzo)
+            Stampa tutti
           </button>
 
           <button
@@ -390,25 +397,16 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
             disabled={loading}
             onClick={() => window.open(`/admin/orders/print?mode=all&type=byProduct`, "_blank")}
           >
-            Stampa tutti (prodotto / clienti)
+            Stampa per prodotti
           </button>
 
           <button
             type="button"
             className="rounded-lg border bg-white px-4 py-2 font-semibold disabled:opacity-60"
-            disabled={loading || !fromDate || !toDate}
-            onClick={() => window.open(`/admin/orders/print?mode=range&type=byOrder&from=&to=`, "_blank")}
+            disabled={loading}
+            onClick={() => window.open(`/admin/orders/print?mode=all&type=byCatalog`, "_blank")}
           >
-            Stampa X–Y (cliente / casse / prezzo)
-          </button>
-
-          <button
-            type="button"
-            className="rounded-lg border bg-white px-4 py-2 font-semibold disabled:opacity-60"
-            disabled={loading || !fromDate || !toDate}
-            onClick={() => window.open(`/admin/orders/print?mode=range&type=byProduct&from=&to=`, "_blank")}
-          >
-            Stampa X–Y (prodotto / clienti)
+            Stampa per catalogo
           </button>
 
           <button
@@ -419,7 +417,6 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
           >
             Cancella da X a Y
           </button>
-
 
           <button
             type="button"
@@ -444,7 +441,6 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
           >
             Stampa preparazione cumulativa
           </button>
-
 
           <button
             type="button"
@@ -568,19 +564,10 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
 
                       <div className="mt-2 text-xs text-gray-600">Q.tà: {it.qty}</div>
 
-                      <div className="mt-2 flex gap-2">
+                      <div className="mt-2">
                         <button
                           type="button"
-                          className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
-                          disabled={loading}
-                          onClick={() => unsellProduct(p.id)}
-                        >
-                          Rimetti in vendita
-                        </button>
-
-                        <button
-                          type="button"
-                          className="flex-1 rounded-lg bg-black px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                          className="w-full rounded-lg bg-black px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
                           disabled={loading}
                           onClick={() => removeFromOrder(o.id, p.id)}
                         >

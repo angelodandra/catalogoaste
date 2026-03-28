@@ -43,7 +43,7 @@ export default function CatalogClientPage(props: { params: Promise<{ catalogId: 
       .from("products")
       .select("id, progressive_number, box_number, image_path, is_sold, is_published, price_eur, weight_kg, catalogs(title, online_title)")
       .eq("catalog_id", catalogId)
-      .eq("is_published", true) // ✅ clienti vedono SOLO pubblicati
+      .eq("is_published", true)  // ✅ clienti vedono SOLO pubblicati; i venduti spariscono solo con "Elimina venduti"
       .order("progressive_number", { ascending: true });
 
     if (error) return;

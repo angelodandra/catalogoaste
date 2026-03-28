@@ -23,9 +23,13 @@ export async function POST(req: Request) {
 
     const productIds = (items || []).map((x: any) => x.product_id).filter(Boolean);
 
-    // 2) rimetti in vendita i prodotti
+    // 2) rimetti in vendita i prodotti (is_published=true ripristina anche prodotti
+    //    nascosti con "Elimina venduti")
     if (productIds.length > 0) {
-      const { error: pErr } = await supabase.from("products").update({ is_sold: false }).in("id", productIds);
+      const { error: pErr } = await supabase
+        .from("products")
+        .update({ is_sold: false, is_published: true })
+        .in("id", productIds);
       if (pErr) throw pErr;
     }
 

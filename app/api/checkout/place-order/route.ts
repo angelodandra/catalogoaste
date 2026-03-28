@@ -95,7 +95,38 @@ export async function POST(req: Request) {
     const appBaseUrl = process.env.APP_BASE_URL || new URL(req.url).origin;
 
     productIds = items.map((i) => i.productId);
-// 1) crea ordine (usa dati customers)
+
+    // 0) PRE-CHECK: verifica disponibilità prodotti PRIMA di creare l'ordine
+    const { data: productsCheck, error: pcErr } = await supabase
+      .from("products")
+      .select("id, box_number, progressive_number, is_sold")
+      .in("id", productIds);
+
+    if (pcErr) throw pcErr;
+
+    const soldProducts = (productsCheck || []).filter((p) => p.is_sold);
+    const availableProductIds = (productsCheck || []).filter((p) => !p.is_sold).map((p) => p.id);
+    const skippedInfo = soldProducts.map((p) => ({
+      productId: p.id,
+      label: `Cassa ${p.box_number} (Prog ${p.progressive_number})`,
+    }));
+
+    // Se TUTTI i prodotti sono esauriti → errore, non creo nemmeno l'ordine
+    if (availableProductIds.length === 0) {
+      return NextResponse.json(
+        {
+          error: "Tutti i prodotti nel carrello sono già esauriti.",
+          skipped: skippedInfo,
+        },
+        { status: 409 }
+      );
+    }
+
+    // Filtra items: tieni solo quelli disponibili
+    const availableItems = items.filter((i) => availableProductIds.includes(i.productId));
+    productIds = availableProductIds;
+
+// 1) crea ordine (usa dati customers) — solo con prodotti disponibili
     const { data: order, error: oErr } = await supabase
       .from("orders")
       .insert({
@@ -113,12 +144,13 @@ export async function POST(req: Request) {
     const pdfLink = `${appBaseUrl}/o/${order.id}`;
 
 
-    // 2) IDEMPOTENZA: verifica prodotto già venduto
+    // 2) IDEMPOTENZA: verifica se lo STESSO cliente ha già ordinato gli stessi prodotti
     const { data: existingItems } = await supabase
       .from("order_items")
-      .select("order_id, orders!inner(id, status)")
+      .select("order_id, orders!inner(id, status, customer_phone)")
       .in("product_id", productIds)
-      .eq("orders.status", "completed");
+      .eq("orders.status", "completed")
+      .eq("orders.customer_phone", customerPhoneN);
 
     if (existingItems && existingItems.length > 0) {
       const existingOrderId = existingItems[0].order_id;
@@ -126,17 +158,16 @@ export async function POST(req: Request) {
         ok: true,
         orderId: existingOrderId,
         pdfPublicUrl: `/o/${existingOrderId}`,
-        note: "ordine già esistente (idempotente)"
+        note: "ordine già esistente (idempotente)",
+        skipped: skippedInfo,
       });
     }
 
-// 2) blocca prodotti (atomic)
-    
+// 3) blocca prodotti disponibili (atomic)
 console.log("RESERVE RPC productIds:", productIds);
 
 const { data: rData, error: rErr } = await supabase.rpc("reserve_products", { p_product_ids: productIds });
 console.log("RESERVE RPC result:", rData);
-console.log("RESERVE RPC error:", rErr);
 console.log("RESERVE RPC error:", rErr);
 
 if (rErr) {
@@ -147,6 +178,7 @@ if (rErr) {
   return NextResponse.json(
     {
       error: "Uno o più prodotti sono già esauriti. Riprova.",
+      skipped: skippedInfo,
       debug:
         process.env.NODE_ENV !== "production"
           ? {
@@ -163,8 +195,8 @@ reservedOk = true;
 // DEBUG: forza errore subito dopo la reserve (per test rollback)
     if (body?.debugFailAfterReserve) throw new Error("DEBUG_FAIL_AFTER_RESERVE");
 
-    // 3) salva righe ordine
-    const rows = items.map((it) => ({
+    // 4) salva righe ordine (solo prodotti disponibili)
+    const rows = availableItems.map((it) => ({
       order_id: order.id,
       product_id: it.productId,
       qty: it.qty ?? 1,
@@ -360,7 +392,7 @@ reservedOk = true;
     }
     // === /OWNER WA (sandbox) ===
 
-return NextResponse.json({ ok: true, orderId: order.id, pdfPublicUrl, wa_debug: __waDebug });
+return NextResponse.json({ ok: true, orderId: order.id, pdfPublicUrl, skipped: skippedInfo, wa_debug: __waDebug });
   } catch (e: any) {
     // rollback: se avevamo riservato le casse e poi qualcosa è fallito, le rimettiamo disponibili
     // NB: via RPC (come reserve_products) per evitare problemi di permessi/RLS

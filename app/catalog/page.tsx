@@ -17,6 +17,7 @@ export default function CatalogIndexPage() {
   const [cartOpen, setCartOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartReady, setCartReady] = useState(false);
+  const [noCatalogs, setNoCatalogs] = useState(false);
 
   useEffect(() => {
     try {
@@ -46,14 +47,16 @@ export default function CatalogIndexPage() {
 
     if (!ids.length) {
       setProducts([]);
+      setNoCatalogs(true);
       return;
     }
+    setNoCatalogs(false);
 
     const { data, error } = await supabaseBrowser()
       .from("products")
       .select("id, progressive_number, box_number, image_path, is_sold, is_published, price_eur, weight_kg, catalog_id, catalogs(title, online_title)")
       .in("catalog_id", ids)
-      .eq("is_published", true)
+      .eq("is_published", true)  // ✅ clienti vedono SOLO pubblicati; i venduti spariscono solo con "Elimina venduti"
       .order("progressive_number", { ascending: true });
 
     if (error) return;
@@ -75,10 +78,32 @@ export default function CatalogIndexPage() {
     });
 
     setProducts(mapped);
+
+    setCart((prev) =>
+      prev.filter((item) => {
+        const updated = mapped.find((p) => p.id === item.product.id);
+        return updated && !updated.is_sold;
+      })
+    );
   }
 
   useEffect(() => {
     load();
+
+    const ch = supabaseBrowser()
+      .channel("catalog-visible-products")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "products" },
+        () => {
+          load();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabaseBrowser().removeChannel(ch);
+    };
   }, []);
 
   function addToCart(p: ProductUI) {
@@ -105,6 +130,19 @@ export default function CatalogIndexPage() {
   }
 
   const cartCount = cart.length;
+
+  if (noCatalogs) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-8 text-center">
+        <img src="/logo.jpg" alt="Logo azienda" className="mb-8 h-28 w-auto" />
+        <div className="text-2xl font-bold text-gray-800">Nessun catalogo disponibile</div>
+        <div className="mt-3 max-w-sm text-gray-500">
+          Al momento non ci sono prodotti in vendita.<br />
+          Torna a breve per scoprire le nuove disponibilità.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl p-4">

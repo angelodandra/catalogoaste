@@ -96,7 +96,7 @@ export async function POST(req: Request) {
     const prodByProg = new Map<number, { id: string; progressive_number: number; peso_interno_kg: number | null }>();
     for (const p of (prods || []) as any[]) prodByProg.set(p.progressive_number, p);
 
-    const matched: { progressive_number: number; peso_interno_kg: number; productId: string }[] = [];
+    const matched: { progressive_number: number; peso_interno_kg: number; specie: string | null; productId: string }[] = [];
     const notFound: { progressive_number: number; peso_interno_kg: number }[] = [];
 
     for (const r of unique) {
@@ -146,7 +146,12 @@ export async function POST(req: Request) {
         batch.map((m) =>
           supabase
             .from("products")
-            .update({ peso_interno_kg: m.peso_interno_kg, specie: m.specie })
+            .update({
+              peso_interno_kg: m.peso_interno_kg,
+              specie: m.specie,
+              // peso visibile = interno + 0.2, arrotondato a 2 decimali
+              weight_kg: Math.round((m.peso_interno_kg + 0.2) * 100) / 100,
+            })
             .eq("id", m.productId)
         )
       );

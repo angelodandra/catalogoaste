@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     if (productIds.length > 0) {
       const { error: pErr, count: pCount } = await supabase
         .from("products")
-        .update({ is_sold: false }, { count: "exact" })
+        .update({ is_sold: false, is_published: true }, { count: "exact" })
         .in("id", productIds);
 
       if (pErr) throw pErr;

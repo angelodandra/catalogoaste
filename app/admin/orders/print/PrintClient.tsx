@@ -29,6 +29,10 @@ type OrderItemRow = {
     box_number: string | null;
     image_path?: string | null;
     price_eur: number | null;
+    weight_kg?: number | null;
+    peso_interno_kg?: number | null;
+    specie?: string | null;
+    catalogs?: { title?: string | null; online_title?: string | null } | null;
   } | null;
 };
 
@@ -43,7 +47,8 @@ export default function OrdersPrintPage() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const mode = (sp.get("mode") || "customer").toLowerCase();
+  const type = (sp.get("type") || "byOrder").toLowerCase();
+  const mode = (sp.get("mode") || "all").toLowerCase();
   const from = (sp.get("from") || "").trim();
   const to = (sp.get("to") || "").trim();
 
@@ -84,7 +89,7 @@ export default function OrdersPrintPage() {
 
         const { data: iData, error: iErr } = await supabaseBrowser()
           .from("order_items")
-          .select("order_id,qty,products(id,progressive_number,box_number,image_path,price_eur)")
+          .select("order_id,qty,products(id,progressive_number,box_number,image_path,price_eur,weight_kg,peso_interno_kg,specie,catalogs(title,online_title))")
           .in("order_id", orderIds);
 
         if (iErr) throw iErr;
@@ -137,25 +142,28 @@ export default function OrdersPrintPage() {
         name: string;
         company?: string | null;
         createdAts: string[];
-        boxes: Record<string, { box: string; qty: number; price: number | null }>;
+        boxes: Record<string, { box: string; qty: number; price: number | null; specie?: string | null; weight_kg?: number | null; peso_interno_kg?: number | null; catalogo?: string | null }>;
       }
     > = {};
 
     for (const o of orders) {
       const phone = String(o.customer_phone || "").trim() || "—";
+      const custName = String(o.customer_name || "").trim() || "Cliente";
       const company = customerByPhone[phone]?.company ?? null;
+      // Chiave composta: separa ordini dello stesso venditore per clienti diversi
+      const groupKey = `${phone}|${custName}`;
 
-      if (!gm[phone]) {
-        gm[phone] = {
+      if (!gm[groupKey]) {
+        gm[groupKey] = {
           phone,
-          name: String(o.customer_name || "").trim() || "Cliente",
+          name: custName,
           company,
           createdAts: [],
           boxes: {},
         };
       }
 
-      gm[phone].createdAts.push(o.created_at);
+      gm[groupKey].createdAts.push(o.created_at);
 
       const rows = itemsByOrder[o.id] || [];
       for (const r of rows) {
@@ -166,14 +174,27 @@ export default function OrdersPrintPage() {
         const qty = Number(r.qty ?? 1);
         const price = pr.price_eur === null || pr.price_eur === undefined ? null : Number(pr.price_eur);
 
-        if (!gm[phone].boxes[box]) {
-          gm[phone].boxes[box] = { box, qty: 0, price };
+        const cat = pr.catalogs as any;
+        const catalogo = (Array.isArray(cat) ? cat[0] : cat)?.online_title
+          || (Array.isArray(cat) ? cat[0] : cat)?.title
+          || null;
+
+        if (!gm[groupKey].boxes[box]) {
+          gm[groupKey].boxes[box] = {
+            box,
+            qty: 0,
+            price,
+            specie: pr.specie ?? null,
+            weight_kg: pr.weight_kg ?? null,
+            peso_interno_kg: pr.peso_interno_kg ?? null,
+            catalogo,
+          };
         }
 
-        gm[phone].boxes[box].qty += qty;
+        gm[groupKey].boxes[box].qty += qty;
 
-        if (gm[phone].boxes[box].price === null && price !== null) {
-          gm[phone].boxes[box].price = price;
+        if (gm[groupKey].boxes[box].price === null && price !== null) {
+          gm[groupKey].boxes[box].price = price;
         }
       }
     }
@@ -205,17 +226,19 @@ export default function OrdersPrintPage() {
   }, [orders, itemsByOrder, customerByPhone]);
 
   const productView = useMemo(() => {
-    const pm: Record<
-      string,
-      {
-        productId: string;
-        box: string;
-        prog: string | number;
-        price: number | null;
-        customers: { name: string; company?: string | null; phone: string; qty: number }[];
-        imagePath?: string | null;
-      }
-    > = {};
+    // mappa prodotto → dati aggregati
+    const pm: Record<string, {
+      productId: string;
+      box: string;
+      prog: string | number;
+      price: number | null;
+      specie: string | null;
+      weight_kg: number | null;
+      peso_interno_kg: number | null;
+      catalogo: string | null;
+      imagePath?: string | null;
+      customers: { name: string; company?: string | null; phone: string; qty: number }[];
+    }> = {};
 
     const orderById: Record<string, Order> = {};
     for (const o of orders) orderById[o.id] = o;
@@ -223,7 +246,6 @@ export default function OrdersPrintPage() {
     for (const row of items) {
       const p = row.products;
       if (!p) continue;
-
       const ord = orderById[row.order_id];
       if (!ord) continue;
 
@@ -231,14 +253,23 @@ export default function OrdersPrintPage() {
       const company = customerByPhone[phone]?.company ?? null;
       const qty = Number(row.qty ?? 1);
 
+      const cat = p.catalogs as any;
+      const catalogo = (Array.isArray(cat) ? cat[0] : cat)?.online_title
+        || (Array.isArray(cat) ? cat[0] : cat)?.title
+        || null;
+
       if (!pm[p.id]) {
         pm[p.id] = {
           productId: p.id,
           box: p.box_number ?? "?",
           prog: p.progressive_number ?? "?",
           price: p.price_eur ?? null,
-          customers: [],
+          specie: p.specie ?? null,
+          weight_kg: p.weight_kg ?? null,
+          peso_interno_kg: p.peso_interno_kg ?? null,
+          catalogo,
           imagePath: p.image_path ?? null,
+          customers: [],
         };
       }
 
@@ -250,24 +281,97 @@ export default function OrdersPrintPage() {
       });
     }
 
-    const arr = Object.values(pm);
+    // raggruppa per specie
+    const bySpecie: Record<string, typeof pm[string][]> = {};
+    for (const prod of Object.values(pm)) {
+      const key = prod.specie?.trim() || "—";
+      if (!bySpecie[key]) bySpecie[key] = [];
+      bySpecie[key].push(prod);
+    }
 
-    arr.sort((a, b) => {
-      const pa = Number(a.prog);
-      const pb = Number(b.prog);
-      if (Number.isFinite(pa) && Number.isFinite(pb)) return pa - pb;
-      return String(a.box).localeCompare(String(b.box));
+    // ordina le casse per numero progressivo dentro ogni specie
+    for (const arr of Object.values(bySpecie)) {
+      arr.sort((a, b) => {
+        const pa = Number(a.prog); const pb = Number(b.prog);
+        if (Number.isFinite(pa) && Number.isFinite(pb)) return pa - pb;
+        return String(a.box).localeCompare(String(b.box));
+      });
+    }
+
+    // ordina i gruppi specie alfabeticamente (ma "—" in fondo)
+    return Object.entries(bySpecie).sort(([a], [b]) => {
+      if (a === "—") return 1;
+      if (b === "—") return -1;
+      return a.localeCompare(b);
     });
+  }, [orders, items, customerByPhone]);
 
-    return arr;
+  // ── Vista per catalogo ──
+  const catalogView = useMemo(() => {
+    const cm: Record<string, {
+      label: string;
+      boxes: {
+        box: string;
+        prog: number | string;
+        specie?: string | null;
+        weight_kg?: number | null;
+        peso_interno_kg?: number | null;
+        price: number | null;
+        customers: { name: string; company?: string | null; phone: string }[];
+      }[];
+      tot: number;
+    }> = {};
+
+    const orderById: Record<string, Order> = {};
+    for (const o of orders) orderById[o.id] = o;
+
+    for (const row of items) {
+      const p = row.products;
+      if (!p) continue;
+      const ord = orderById[row.order_id];
+      if (!ord) continue;
+
+      const cat = p.catalogs as any;
+      const label = (Array.isArray(cat) ? cat[0] : cat)?.online_title
+        || (Array.isArray(cat) ? cat[0] : cat)?.title
+        || "Senza catalogo";
+
+      const phone = String(ord.customer_phone || "").trim();
+      const company = customerByPhone[phone]?.company ?? null;
+      const custName = String(ord.customer_name || "").trim() || "Cliente";
+
+      if (!cm[label]) cm[label] = { label, boxes: [], tot: 0 };
+
+      const existing = cm[label].boxes.find((b) => b.box === String(p.box_number || "?"));
+      if (existing) {
+        // Dedup per phone+name: stesso venditore per clienti diversi = voci separate
+        if (!existing.customers.find((c) => c.phone === phone && c.name === custName)) {
+          existing.customers.push({ name: custName, company, phone });
+        }
+      } else {
+        cm[label].boxes.push({
+          box: String(p.box_number || "?"),
+          prog: p.progressive_number ?? "?",
+          specie: p.specie ?? null,
+          weight_kg: p.weight_kg ?? null,
+          peso_interno_kg: p.peso_interno_kg ?? null,
+          price: p.price_eur ?? null,
+          customers: [{ name: custName, company, phone }],
+        });
+      }
+
+      if (p.price_eur != null) cm[label].tot += Number(p.price_eur);
+    }
+
+    return Object.values(cm).sort((a, b) => a.label.localeCompare(b.label));
   }, [orders, items, customerByPhone]);
 
   const title = useMemo(() => {
     const range = from && to ? `(${from} → ${to})` : "(tutti)";
-    return mode === "product"
-      ? `Stampa ordini per prodotto ${range}`
-      : `Stampa ordini per cliente ${range}`;
-  }, [mode, from, to]);
+    if (type === "byproduct") return `Stampa per prodotti ${range}`;
+    if (type === "bycatalog") return `Stampa per catalogo ${range}`;
+    return `Stampa ordini per cliente ${range}`;
+  }, [type, from, to]);
 
   if (loading) {
     return (
@@ -329,10 +433,54 @@ export default function OrdersPrintPage() {
         <div className="text-sm text-gray-600">Stampato il {new Date().toLocaleString("it-IT")}</div>
       </div>
 
-      {mode !== "product" ? (
+      {type === "bycatalog" ? (
+        /* ── Vista per catalogo ── */
+        <div className="space-y-4">
+          {catalogView.map((cat) => (
+            <div key={cat.label} className="rounded-2xl border bg-white p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2 border-b pb-2">
+                <div className="text-lg font-bold">{cat.label}</div>
+                <div className="text-sm font-semibold text-gray-700">Totale: € {Number(cat.tot).toFixed(2)}</div>
+              </div>
+              <div className="mt-3 grid gap-3">
+                {cat.boxes.map((b, idx) => (
+                  <div key={idx} className="text-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="font-semibold">Cassa {b.box}</span>
+                        {b.prog !== "?" && <span className="ml-1 text-gray-500">Prog {b.prog}</span>}
+                        {b.specie && <span className="ml-2 text-gray-700">— {b.specie}</span>}
+                        {(b.weight_kg != null || b.peso_interno_kg != null) && (
+                          <span className="ml-2 text-gray-500">
+                            {b.weight_kg != null && <>pub. {Number(b.weight_kg).toFixed(2)} kg</>}
+                            {b.weight_kg != null && b.peso_interno_kg != null && <> · </>}
+                            {b.peso_interno_kg != null && <>int. {Number(b.peso_interno_kg).toFixed(2)} kg</>}
+                          </span>
+                        )}
+                      </div>
+                      <div className="font-semibold whitespace-nowrap">{eur(b.price)}</div>
+                    </div>
+                    <div className="mt-1 ml-3 text-gray-600">
+                      {b.customers.map((c, ci) => (
+                        <span key={ci}>
+                          {c.name}{c.company ? ` (${c.company})` : ""}{ci < b.customers.length - 1 ? ", " : ""}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          {catalogView.length === 0 && (
+            <div className="text-sm text-gray-600">Nessun ordine nel periodo selezionato.</div>
+          )}
+        </div>
+      ) : type !== "byproduct" ? (
+        /* ── Vista per cliente ── */
         <div className="space-y-4">
           {customerGroups.map((g) => (
-            <div key={g.phone} className="rounded-2xl border bg-white p-4">
+            <div key={`${g.phone}|${g.name}`} className="rounded-2xl border bg-white p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div className="text-lg font-bold">
                   {g.name} {g.company ? `(${g.company})` : ""} — {g.phone}
@@ -346,9 +494,24 @@ export default function OrdersPrintPage() {
 
               <div className="mt-3 grid gap-2">
                 {g.boxesArr.map((b, idx) => (
-                  <div key={idx} className="flex items-center justify-between gap-2 text-sm">
-                    <div>• Cassa {b.box} × {b.qty}</div>
-                    <div className="font-semibold">{eur(b.price)}</div>
+                  <div key={idx} className="flex items-start justify-between gap-2 text-sm">
+                    <div>
+                      <span>• Cassa {b.box} × {b.qty}</span>
+                      {b.specie && (
+                        <span className="ml-2 text-gray-700">— {b.specie}</span>
+                      )}
+                      {b.catalogo && (
+                        <span className="ml-2 text-gray-500 italic">[{b.catalogo}]</span>
+                      )}
+                      {(b.weight_kg != null || b.peso_interno_kg != null) && (
+                        <span className="ml-2 text-gray-500">
+                          {b.weight_kg != null && <>pub. {Number(b.weight_kg).toFixed(2)} kg</>}
+                          {b.weight_kg != null && b.peso_interno_kg != null && <> · </>}
+                          {b.peso_interno_kg != null && <>int. {Number(b.peso_interno_kg).toFixed(2)} kg</>}
+                        </span>
+                      )}
+                    </div>
+                    <div className="font-semibold whitespace-nowrap">{eur(b.price)}</div>
                   </div>
                 ))}
               </div>
@@ -362,25 +525,47 @@ export default function OrdersPrintPage() {
           )}
         </div>
       ) : (
-        <div className="space-y-4">
-          {productView.map((p) => (
-            <div key={p.productId} className="rounded-2xl border bg-white p-4">
-              <div className="flex items-baseline justify-between gap-2">
-                <div className="text-lg font-bold">
-                  <span className="inline-flex items-center gap-2">
-                    <img src={imgUrl(p.imagePath)} className="h-12 w-12 rounded border object-cover" />
-                    <span>
-                      Cassa {p.box} {p.prog !== "?" ? `— Prog ${p.prog}` : ""}
-                    </span>
-                  </span>
-                </div>
-                <div className="text-sm font-semibold">{eur(p.price)}</div>
+        /* ── Vista per prodotti raggruppata per specie ── */
+        <div className="space-y-6">
+          {productView.map(([specie, boxes]) => (
+            <div key={specie}>
+              {/* intestazione specie */}
+              <div className="mb-3 flex items-center gap-3">
+                <div className="text-lg font-extrabold tracking-wide">{specie}</div>
+                <div className="flex-1 border-t" />
+                <div className="text-sm text-gray-500">{boxes.length} {boxes.length === 1 ? "cassa" : "casse"}</div>
               </div>
 
-              <div className="mt-3 grid gap-1 text-sm">
-                {p.customers.map((c, idx) => (
-                  <div key={idx}>
-                    • {c.name} {c.company ? `(${c.company})` : ""} — {c.phone} × {c.qty}
+              <div className="space-y-3">
+                {boxes.map((p) => (
+                  <div key={p.productId} className="rounded-2xl border bg-white p-4">
+                    <div className="flex items-start gap-3">
+                      <img src={imgUrl(p.imagePath)} className="h-14 w-14 flex-shrink-0 rounded-xl border object-cover" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <div className="font-bold">
+                            Cassa {p.box}{p.prog !== "?" ? ` · Prog ${p.prog}` : ""}
+                          </div>
+                          <div className="font-semibold whitespace-nowrap">{eur(p.price)}</div>
+                        </div>
+
+                        {/* peso e provenienza */}
+                        <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-gray-500">
+                          {p.weight_kg != null && <span>pub. {Number(p.weight_kg).toFixed(2)} kg</span>}
+                          {p.peso_interno_kg != null && <span>int. {Number(p.peso_interno_kg).toFixed(2)} kg</span>}
+                          {p.catalogo && <span className="italic">[{p.catalogo}]</span>}
+                        </div>
+
+                        {/* clienti */}
+                        <div className="mt-2 grid gap-0.5 text-sm text-gray-700">
+                          {p.customers.map((c, idx) => (
+                            <div key={idx}>
+                              • {c.name}{c.company ? ` (${c.company})` : ""} — {c.phone}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>

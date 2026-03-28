@@ -92,8 +92,10 @@ export function Grid3x3(props: {
                 )}
 
                 {p.is_sold && (
-                  <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/55">
-                    <div className="rounded-lg bg-white px-3 py-2 text-sm font-bold">ESAURITO</div>
+                  <div className="absolute inset-0 animate-[fadeIn_220ms_ease-out] flex items-center justify-center rounded-xl bg-white/30">
+                    <div className="animate-[popIn_220ms_ease-out] rounded-lg bg-red-600 px-5 py-2 text-sm font-extrabold tracking-widest text-white shadow-lg">
+                      ESAURITO
+                    </div>
                   </div>
                 )}
 
@@ -117,6 +119,18 @@ export function Grid3x3(props: {
           );
         })}
       </div>
+
+
+      <style jsx global>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes popIn {
+          from { opacity: 0; transform: scale(0.92); }
+          to { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
 
       {preview && (
         <div

@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/requireAdmin";
 
 export const runtime = "nodejs";
 
-type Row = { productId: string; price: number | null; weightKg?: number | null };
+type Row = { productId: string; price: number | null; weightKg?: number | null; pesoInternoKg?: number | null };
 
 function toNumberOrNull(v: any): number | null {
   if (v === null || v === undefined) return null;
@@ -29,11 +29,20 @@ export async function POST(req: Request) {
       if (!r.productId) continue;
 
       const price = toNumberOrNull(r.price);
-      const weight = toNumberOrNull((r as any).weightKg);
+      const weight = toNumberOrNull(r.weightKg);
+
+      // Aggiorna solo price_eur e weight_kg; peso_interno_kg è gestito
+      // esclusivamente dall'import CSV e non va mai sovrascritto da qui.
+      const updatePayload: Record<string, any> = { price_eur: price, weight_kg: weight };
+
+      // Solo se pesoInternoKg è esplicitamente presente nel payload lo aggiorniamo
+      if ("pesoInternoKg" in r) {
+        updatePayload.peso_interno_kg = toNumberOrNull(r.pesoInternoKg);
+      }
 
       const { error } = await supabase
         .from("products")
-        .update({ price_eur: price, weight_kg: weight })
+        .update(updatePayload)
         .eq("id", r.productId)
         .eq("catalog_id", catalogId);
 

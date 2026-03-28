@@ -18,7 +18,7 @@ export async function POST(req: Request) {
 
     const supabase = supabaseServer();
 
-    let q = supabase.from("products").update({ is_sold: false });
+    let q = supabase.from("products").update({ is_sold: false, is_published: true });
 
     if (!all) q = q.eq("catalog_id", catalogId);
 
