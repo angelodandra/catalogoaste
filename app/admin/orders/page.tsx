@@ -36,6 +36,12 @@ export default function AdminOrdersPage() {
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItemRow[]>>({});
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
+  // PDF overlay — compatibile Safari iOS (no window.open dopo await)
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  function closePdfOverlay() {
+    if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+    setPdfBlobUrl(null);
+  }
 
   const [customerByPhone, setCustomerByPhone] = useState<Record<string, { company?: string | null }>>({});
 
@@ -319,6 +325,33 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
 
   return (
     <div className="mx-auto max-w-6xl p-4">
+
+      {/* OVERLAY PDF — schermo intero, compatibile Safari iOS */}
+      {pdfBlobUrl && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black">
+          <div className="flex items-center justify-between bg-white border-b px-4 py-3">
+            <button
+              className="rounded-lg border px-4 py-2 text-sm font-semibold"
+              onClick={closePdfOverlay}
+            >
+              ✕ Chiudi
+            </button>
+            <a
+              href={pdfBlobUrl}
+              download="preparazione.pdf"
+              className="rounded-lg bg-black px-5 py-2 text-sm font-bold text-white"
+            >
+              ⬇ Scarica PDF
+            </a>
+          </div>
+          <iframe
+            src={pdfBlobUrl}
+            className="flex-1 w-full border-0"
+            title="Stampa preparazione"
+          />
+        </div>
+      )}
+
       <div className="mb-6 flex flex-col items-center gap-2 text-center">
         <img src="/logo.jpg" alt="Logo azienda" className="h-20 w-auto" />
         <div className="text-2xl font-bold">Ordini</div>
@@ -501,8 +534,7 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
       if (!res.ok) { alert("Errore stampa"); return; }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setPdfBlobUrl(url); // overlay — funziona su Safari iOS
     })();
   }}
 >
