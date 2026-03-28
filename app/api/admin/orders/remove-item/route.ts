@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     if (restock) {
       const { error: pErr } = await supabase
         .from("products")
-        .update({ is_sold: false })
+        .update({ is_sold: false, is_published: true })
         .eq("id", productId);
 
       if (pErr) throw pErr;
