@@ -198,6 +198,20 @@ export default function FulfillmentPage() {
     return c.products.length > 0 && preparedCount(c) >= c.products.length;
   }
 
+  // Safari iOS blocca window.open("","_blank") — usiamo Blob URL invece
+  function openHtmlInNewTab(html: string) {
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+
   function buildClientBlock(c: ClientOrder) {
     const printProducts = c.products.filter((p) => isPrepared(c.orderId, p.id));
     if (!printProducts.length) return "";
@@ -250,8 +264,7 @@ export default function FulfillmentPage() {
       </div>
       ${blocks}
     </body></html>`;
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(html); w.document.close(); }
+    openHtmlInNewTab(html);
   }
 
   function printClient(c: ClientOrder) {
@@ -268,8 +281,7 @@ export default function FulfillmentPage() {
       </div>
       ${block}
     </body></html>`;
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(html); w.document.close(); }
+    openHtmlInNewTab(html);
   }
 
   if (loading) return (
