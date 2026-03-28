@@ -67,6 +67,8 @@ export default function FulfillmentPage() {
   const [prepared, setPrepared] = useState<Record<string, Set<string>>>({});
   // quale cliente ha il pannello aperto
   const [openClient, setOpenClient] = useState<string | null>(null);
+  // contenuto HTML da stampare (overlay a schermo intero, compatibile Safari iOS)
+  const [printHtml, setPrintHtml] = useState<string | null>(null);
 
   // Carica stato preparati da localStorage al mount
   useEffect(() => {
@@ -198,18 +200,9 @@ export default function FulfillmentPage() {
     return c.products.length > 0 && preparedCount(c) >= c.products.length;
   }
 
-  // Safari iOS blocca window.open("","_blank") — usiamo Blob URL invece
+  // Mostra HTML in overlay a schermo intero — compatibile Safari iOS (no popup/new tab)
   function openHtmlInNewTab(html: string) {
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.target = "_blank";
-    a.rel = "noopener";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    setPrintHtml(html);
   }
 
   function buildClientBlock(c: ClientOrder) {
@@ -293,6 +286,37 @@ export default function FulfillmentPage() {
 
   return (
     <div className="mx-auto max-w-2xl p-4">
+
+      {/* OVERLAY STAMPA — schermo intero, compatibile Safari iOS */}
+      {printHtml && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-white">
+          {/* Barra superiore */}
+          <div className="flex items-center justify-between border-b px-4 py-3 print:hidden">
+            <button
+              className="rounded-lg border px-4 py-2 text-sm font-semibold"
+              onClick={() => setPrintHtml(null)}
+            >
+              ✕ Chiudi
+            </button>
+            <button
+              className="rounded-lg bg-black px-5 py-2 text-sm font-bold text-white"
+              onClick={() => {
+                const iframe = document.getElementById("print-iframe") as HTMLIFrameElement;
+                iframe?.contentWindow?.print();
+              }}
+            >
+              🖨 Stampa
+            </button>
+          </div>
+          {/* Contenuto in iframe isolato */}
+          <iframe
+            id="print-iframe"
+            srcDoc={printHtml}
+            className="flex-1 w-full border-0"
+            title="Stampa preparazione"
+          />
+        </div>
+      )}
       <div className="mb-5 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Link href="/admin/orders" className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50">← Ordini</Link>
