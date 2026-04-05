@@ -47,7 +47,7 @@ function pageHeader(doc: PDFKit.PDFDocument, title: string, sub?: string) {
   doc.font("Helvetica-Bold").fontSize(15).fillColor("#000")
     .text(title, MARGIN, MARGIN + 4, { width: PW, align: "center" });
   if (sub) {
-    doc.font("Helvetica-Bold").fontSize(10).fillColor("#333")
+    doc.font("Helvetica-Bold").fontSize(15).fillColor("#333")
       .text(sub, MARGIN, doc.y + 3, { width: PW, align: "center" });
   }
   doc.font("Helvetica").fontSize(8).fillColor("#888")
