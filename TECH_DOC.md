@@ -1,7 +1,7 @@
 # Documentazione Tecnica — Catalogo Pesce F.lli D'Andrassi
 
 > Documento di riferimento per sviluppo e manutenzione.
-> Aggiornato: 28 marzo 2026 (v2)
+> Aggiornato: 6 aprile 2026 (v3)
 
 ---
 
@@ -34,7 +34,8 @@ app/
     login/                      # Pagina login admin (Supabase Auth)
     catalog/[catalogId]/
       listino/                  # Gestione prodotti del catalogo (upload foto, ecc.)
-      pricing/                  # Prezzi + peso pubblicato + import pesi CSV/XLSX
+      pricing/                  # Prezzi + peso pubblicato + import pesi CSV/XLSX + import da file aste
+      pricelist/                # Listino prezzi: stats, anteprima, stampa PDF completo o per specie
     orders/
       page.tsx                  # Lista ordini, annulla, rimuovi singolo prodotto
       print/PrintClient.tsx     # Stampa ordini (per cliente / per prodotto / per catalogo)
@@ -63,6 +64,9 @@ app/
       remove-order-item/        # Rimuove prodotto da ordine → rimette in vendita
       reset-sold/               # Reset globale is_sold → rimette tutto in vendita
       save-prices/              # Salva prezzi e peso pubblicato (NON tocca peso_interno_kg)
+      parse-aste-source/        # Auto-parser file aste: estrae specie/peso/coop da PDF o XLSX
+      catalog/
+        pricelist-pdf/          # Genera PDF listino prezzi (completo o raggruppato per specie)
       sellers/
         list/                   # Lista venditori
         add/                    # Aggiunge venditore
@@ -126,6 +130,7 @@ lib/
 | weight_kg | numeric | Peso pubblicato (visibile ai clienti, = peso_interno + 0.2) |
 | peso_interno_kg | numeric | Peso interno reale (da import CSV, usato nelle stampe) |
 | specie | text | Es. "Orata", "Spigola" |
+| numero_interno_cassa | text | N° coop dell'asta (da import auto file aste) |
 | is_sold | bool | true = venduto (occupato da un ordine) |
 | is_published | bool | false = nascosto (usato da "Elimina venduti") |
 
@@ -358,3 +363,106 @@ const title = cat?.title || "";
 - `peso_interno_kg`: viene SOLO dall'import CSV/XLSX, mai modificato manualmente
 - `weight_kg`: peso pubblicato = `peso_interno_kg + 0.2`, modificabile nella pagina prezzi
 - Le stampe mostrano entrambi: `int. X.XX kg` e `pub. X.XX kg`
+
+### Nome catalogo nei PDF
+Usare sempre `online_title || title` dalla tabella `catalogs` — mai il campo `name` (che può contenere l'UUID). Questo è lo stesso campo usato dalle pagine cliente.
+
+---
+
+## 10. Funzionalità Aggiunte il 6 Aprile 2026
+
+### Auto-parser file aste (`/api/admin/parse-aste-source`)
+
+Elimina la necessità di creare manualmente il file pesi/specie. Legge direttamente il PDF o XLSX di asta e assegna in automatico specie, peso_interno_kg e numero_interno_cassa ai prodotti del catalogo per numero progressivo.
+
+**Formati supportati:**
+
+PDF — formato Civitavecchia "Dettaglio lotti":
+- Estrazione testo con pdfjs-dist legacy build
+- Ricostruzione righe per coordinata Y (transform[5])
+- Regex di parsing: `PDF_ROW_RE = /^(\d+)\s+(.+?)\s+(\d+[,.]?\d*)\s+(\d+[,.]?\d*)\s+(\d+[,.]?\d*)\s+(\d+)$/`
+- Colonne estratte: numero lotto, specie (italiano), peso kg, n° cooperativa
+
+XLSX — formato Acquisti Mercati "Francia":
+- Foglio: ACQUISTI
+- Colonna 2 (C) = numero lotto cooperativa
+- Colonna 8 (I) = nome specie in italiano
+- Colonna 15 (P) = peso netto kg
+
+**Parametri API:**
+- `catalogId` — ID catalogo target
+- `mode` — `preview` (solo anteprima) o `apply` (salva su DB)
+- `file` — multipart, PDF o XLSX
+- `progressiveStart` — (opzionale) progressivo di partenza per il matching
+
+**Dipendenze critiche:**
+
+```ts
+// Bypass Turbopack: assegnare a variabile any prima di dynamic import
+const _pdfPath: any = "pdfjs-dist/legacy/build/pdf.mjs";
+const pdfjsLib: any = await import(/* webpackIgnore: true */ _pdfPath);
+
+// Worker URL con pathToFileURL (NON require.resolve, NON file:// manuale)
+import * as nodeUrl from "url";
+pdfjsLib.GlobalWorkerOptions.workerSrc = nodeUrl.pathToFileURL(
+  path.join(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs")
+).href;
+```
+
+**`instrumentation.ts`** (obbligatorio per pdfjs-dist in Next.js):
+```ts
+export function register() {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    // pdfjs-dist canvas.js usa DOMMatrix/ImageData/Path2D a load time → stub necessari
+    if (!globalThis["DOMMatrix"]) { /* FakeDOMMatrix */ }
+    if (!globalThis["ImageData"]) { /* stub */ }
+    if (!globalThis["Path2D"]) { /* stub */ }
+  }
+}
+```
+
+**`next.config.ts`** — moduli da non bundlare:
+```ts
+serverExternalPackages: ["pdf-parse", "pdfjs-dist", "pdfkit"]
+```
+
+---
+
+### Listino Prezzi (`/admin/catalog/[catalogId]/pricelist`)
+
+Pagina admin con:
+- Statistiche: totale casse, con peso, con prezzo, kg totali
+- Anteprima raggruppata per specie+prezzo
+- Due bottoni di stampa PDF (aperti in nuova tab)
+
+**PDF Listino completo** (`mode=individual`):
+- Tabella: Prog. | Specie | Peso int. kg | Prezzo €/kg | N° coop
+- Colonna N° coop: mostra `numero_interno_cassa` tra parentesi se presente, altrimenti `box_number`
+- Gap 12pt tra colonna Prezzo e N° coop (evita fusione visiva)
+- Paginazione automatica con header ripetuto
+
+**PDF Listino per specie** (`mode=grouped`):
+- Raggruppato per specie (alfabetico) + prezzo (decrescente)
+- Header nero per ogni gruppo con nome specie e prezzo
+- Riga grigia di riepilogo: N casse — totale X.XX kg
+- Paginazione con page-break intelligente
+
+**Intestazione PDF:**
+- Titolo centrato: "LISTINO PREZZI" / "LISTINO PREZZI PER SPECIE"
+- Sottotitolo: `catalogs.online_title || catalogs.title` — omesso se assente (mai UUID)
+- Data di stampa in grigio
+
+**Link dalla dashboard admin:** bottone "Listino" (blue outline) accanto a "Prezzi" per ogni catalogo.
+
+---
+
+## 11. Problemi Risolti il 6 Aprile 2026
+
+| Problema | Causa | Soluzione |
+|---|---|---|
+| `ReferenceError: DOMMatrix is not defined` | pdfjs-dist canvas.js valuta `new DOMMatrix()` al caricamento del modulo, prima che qualsiasi polyfill sia attivo | `instrumentation.ts` con stub su `globalThis` prima di ogni import |
+| `"Setting up fake worker failed: Invalid URL"` | `require.resolve()` non funziona con `.mjs`; `file://` + path stringa produce URL malformato | `pathToFileURL(path.join(process.cwd(), "node_modules/pdfjs-dist/..."))` |
+| Turbopack "Module not found" per `pdfjs-dist/legacy/build/pdf.mjs` | pdfjs-dist v5 ha `exports: {}` vuoto; Turbopack rifiuta il subpath a build time | `const _pdfPath: any = "pdfjs-dist/legacy/build/pdf.mjs"` + `import(/* webpackIgnore: true */ _pdfPath)` |
+| TypeScript "Cannot find module pdfjs-dist/legacy/build/pdf.mjs" | TS risolve i literal string staticamente anche con `any` sulla variabile di destinazione | Assegnare prima a variabile tipata `any`, poi importare dalla variabile |
+| "PrezzoCassa" fuso nell'intestazione PDF listino | Testo Prezzo right-aligned finiva immediatamente prima della colonna Cassa | `COL_GAP = 12` tra le due colonne sia nell'header che nei dati |
+| Nome catalogo non compare nel PDF | La query leggeva `catalogs.name` che contiene l'UUID, non il nome visibile | Query su `online_title, title`; mostra `online_title \|\| title`, omette se assente |
