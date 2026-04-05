@@ -120,8 +120,8 @@ function tableRow(doc: PDFKit.PDFDocument, p: Product, idx: number) {
   }
   doc.fillColor("#000");
 
-  let cassa = p.box_number ? `C.${p.box_number}` : `#${p.progressive_number}`;
-  if (p.numero_interno_cassa) cassa += `  (${p.numero_interno_cassa})`;
+  // Mostra solo il numero coop tra parentesi (senza il numero cassa C.)
+  const cassa = p.numero_interno_cassa ? `(${p.numero_interno_cassa})` : (p.box_number ?? "—");
 
   let x = MARGIN;
   cell(doc, String(p.progressive_number), x, y + 3, COL_PROG);  x += COL_PROG;
