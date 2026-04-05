@@ -65,8 +65,10 @@ async function parsePdf(buf: Buffer): Promise<ParsedLot[]> {
     process.cwd(),
     "node_modules", "pdfjs-dist", "legacy", "build", "pdf.worker.min.mjs"
   );
+  // webpackIgnore: tell Turbopack/webpack not to statically resolve this path
+  // (pdfjs-dist has an empty exports map; the file is resolved at runtime by Node.js)
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs" as any);
+  const pdfjsLib = await import(/* webpackIgnore: true */ "pdfjs-dist/legacy/build/pdf.mjs");
   pdfjsLib.GlobalWorkerOptions.workerSrc = nodeUrl.pathToFileURL(workerAbs).href;
 
   const loadingTask = pdfjsLib.getDocument({
