@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import { adminFetch } from "@/lib/adminFetch";
 
-type CatalogInfo = { name: string; created_at: string };
+type CatalogInfo = { title?: string | null; online_title?: string | null; created_at: string };
 type Product = {
   progressive_number: number;
   box_number: string | null;
@@ -30,7 +30,7 @@ export default function PricelistPage(props: { params: Promise<{ catalogId: stri
       const sb = supabaseBrowser();
       const { data: cat } = await sb
         .from("catalogs")
-        .select("name, created_at")
+        .select("title, online_title, created_at")
         .eq("id", catalogId)
         .single();
       setCatalog(cat ?? null);
@@ -122,7 +122,7 @@ export default function PricelistPage(props: { params: Promise<{ catalogId: stri
       <h1 className="mb-1 text-2xl font-bold">Listino prezzi</h1>
       {catalog && (
         <p className="mb-4 text-sm text-gray-500">
-          {catalog.name} — {new Date(catalog.created_at).toLocaleDateString("it-IT")}
+          {catalog.online_title || catalog.title} — {new Date(catalog.created_at).toLocaleDateString("it-IT")}
         </p>
       )}
 

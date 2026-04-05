@@ -272,13 +272,13 @@ export async function GET(req: Request) {
 
     const { data: cat } = await supabase
       .from("catalogs")
-      .select("name, created_at")
+      .select("title, online_title, created_at")
       .eq("id", catalogId)
       .single();
 
-    // Subtitle: show only the user-typed catalog name; never fall back to UUID
-    const rawName = cat?.name && cat.name.trim() ? cat.name.trim() : null;
-    const catalogName = rawName ?? "";
+    // Subtitle: prefer online_title, fallback to title — same logic as customer-facing pages
+    const rawName = (cat?.online_title?.trim() || cat?.title?.trim()) ?? null;
+    const catalogName = rawName || "";
 
     const { data: prods, error } = await supabase
       .from("products")
