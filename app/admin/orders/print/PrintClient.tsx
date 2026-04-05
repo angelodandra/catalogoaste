@@ -32,6 +32,7 @@ type OrderItemRow = {
     weight_kg?: number | null;
     peso_interno_kg?: number | null;
     specie?: string | null;
+    numero_interno_cassa?: string | null;
     catalogs?: { title?: string | null; online_title?: string | null } | null;
   } | null;
 };
@@ -89,7 +90,7 @@ export default function OrdersPrintPage() {
 
         const { data: iData, error: iErr } = await supabaseBrowser()
           .from("order_items")
-          .select("order_id,qty,products(id,progressive_number,box_number,image_path,price_eur,weight_kg,peso_interno_kg,specie,catalogs(title,online_title))")
+          .select("order_id,qty,products(id,progressive_number,box_number,image_path,price_eur,weight_kg,peso_interno_kg,specie,numero_interno_cassa,catalogs(title,online_title))")
           .in("order_id", orderIds);
 
         if (iErr) throw iErr;
@@ -142,7 +143,7 @@ export default function OrdersPrintPage() {
         name: string;
         company?: string | null;
         createdAts: string[];
-        boxes: Record<string, { box: string; qty: number; price: number | null; specie?: string | null; weight_kg?: number | null; peso_interno_kg?: number | null; catalogo?: string | null }>;
+        boxes: Record<string, { box: string; qty: number; price: number | null; specie?: string | null; weight_kg?: number | null; peso_interno_kg?: number | null; catalogo?: string | null; numero_interno_cassa?: string | null }>;
       }
     > = {};
 
@@ -188,6 +189,7 @@ export default function OrdersPrintPage() {
             weight_kg: pr.weight_kg ?? null,
             peso_interno_kg: pr.peso_interno_kg ?? null,
             catalogo,
+            numero_interno_cassa: pr.numero_interno_cassa ?? null,
           };
         }
 
@@ -235,6 +237,7 @@ export default function OrdersPrintPage() {
       specie: string | null;
       weight_kg: number | null;
       peso_interno_kg: number | null;
+      numero_interno_cassa: string | null;
       catalogo: string | null;
       imagePath?: string | null;
       customers: { name: string; company?: string | null; phone: string; qty: number }[];
@@ -267,6 +270,7 @@ export default function OrdersPrintPage() {
           specie: p.specie ?? null,
           weight_kg: p.weight_kg ?? null,
           peso_interno_kg: p.peso_interno_kg ?? null,
+          numero_interno_cassa: p.numero_interno_cassa ?? null,
           catalogo,
           imagePath: p.image_path ?? null,
           customers: [],
@@ -316,6 +320,7 @@ export default function OrdersPrintPage() {
         specie?: string | null;
         weight_kg?: number | null;
         peso_interno_kg?: number | null;
+        numero_interno_cassa?: string | null;
         price: number | null;
         customers: { name: string; company?: string | null; phone: string }[];
       }[];
@@ -355,6 +360,7 @@ export default function OrdersPrintPage() {
           specie: p.specie ?? null,
           weight_kg: p.weight_kg ?? null,
           peso_interno_kg: p.peso_interno_kg ?? null,
+          numero_interno_cassa: p.numero_interno_cassa ?? null,
           price: p.price_eur ?? null,
           customers: [{ name: custName, company, phone }],
         });
@@ -446,12 +452,16 @@ export default function OrdersPrintPage() {
                 {cat.boxes.map((b, idx) => (
                   <div key={idx} className="text-sm">
                     <div className="flex items-start justify-between gap-2">
-                      <div>
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
                         <span className="font-semibold">Cassa {b.box}</span>
-                        {b.prog !== "?" && <span className="ml-1 text-gray-500">Prog {b.prog}</span>}
-                        {b.specie && <span className="ml-2 text-gray-700">— {b.specie}</span>}
+                        {b.numero_interno_cassa && (
+                          <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-semibold text-blue-700">
+                            N° coop: {b.numero_interno_cassa}
+                          </span>
+                        )}
+                        {b.specie && <span className="text-gray-700">— {b.specie}</span>}
                         {(b.weight_kg != null || b.peso_interno_kg != null) && (
-                          <span className="ml-2 text-gray-500">
+                          <span className="text-gray-500">
                             {b.weight_kg != null && <>pub. {Number(b.weight_kg).toFixed(2)} kg</>}
                             {b.weight_kg != null && b.peso_interno_kg != null && <> · </>}
                             {b.peso_interno_kg != null && <>int. {Number(b.peso_interno_kg).toFixed(2)} kg</>}
@@ -495,16 +505,17 @@ export default function OrdersPrintPage() {
               <div className="mt-3 grid gap-2">
                 {g.boxesArr.map((b, idx) => (
                   <div key={idx} className="flex items-start justify-between gap-2 text-sm">
-                    <div>
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                       <span>• Cassa {b.box} × {b.qty}</span>
-                      {b.specie && (
-                        <span className="ml-2 text-gray-700">— {b.specie}</span>
+                      {b.numero_interno_cassa && (
+                        <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-semibold text-blue-700">
+                          N° coop: {b.numero_interno_cassa}
+                        </span>
                       )}
-                      {b.catalogo && (
-                        <span className="ml-2 text-gray-500 italic">[{b.catalogo}]</span>
-                      )}
+                      {b.specie && <span className="text-gray-700">— {b.specie}</span>}
+                      {b.catalogo && <span className="text-gray-500 italic">[{b.catalogo}]</span>}
                       {(b.weight_kg != null || b.peso_interno_kg != null) && (
-                        <span className="ml-2 text-gray-500">
+                        <span className="text-gray-500">
                           {b.weight_kg != null && <>pub. {Number(b.weight_kg).toFixed(2)} kg</>}
                           {b.weight_kg != null && b.peso_interno_kg != null && <> · </>}
                           {b.peso_interno_kg != null && <>int. {Number(b.peso_interno_kg).toFixed(2)} kg</>}
@@ -543,8 +554,13 @@ export default function OrdersPrintPage() {
                       <img src={imgUrl(p.imagePath)} className="h-14 w-14 flex-shrink-0 rounded-xl border object-cover" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline justify-between gap-2">
-                          <div className="font-bold">
-                            Cassa {p.box}{p.prog !== "?" ? ` · Prog ${p.prog}` : ""}
+                          <div className="flex flex-wrap items-baseline gap-x-2 font-bold">
+                            <span>Cassa {p.box}</span>
+                            {p.numero_interno_cassa && (
+                              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-semibold text-blue-700">
+                                N° coop: {p.numero_interno_cassa}
+                              </span>
+                            )}
                           </div>
                           <div className="font-semibold whitespace-nowrap">{eur(p.price)}</div>
                         </div>

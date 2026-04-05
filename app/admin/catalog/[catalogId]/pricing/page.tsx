@@ -15,6 +15,7 @@ type Row = {
   weight_kg: number | null;
   peso_interno_kg: number | null;
   specie: string | null;
+  numero_interno_cassa: string | null;
 };
 
 export default function PricingPage(props: { params: Promise<{ catalogId: string }> }) {
@@ -77,7 +78,7 @@ async function load(silent: boolean = false) {
     if (!silent) setMsg("Carico…");
     const { data, error } = await supabaseBrowser()
       .from("products")
-      .select("id,progressive_number,box_number,image_path,is_published,price_eur,weight_kg,peso_interno_kg,specie")
+      .select("id,progressive_number,box_number,image_path,is_published,price_eur,weight_kg,peso_interno_kg,specie,numero_interno_cassa")
       .eq("catalog_id", catalogId)
       .order("progressive_number", { ascending: true });
 
@@ -272,11 +273,17 @@ async function load(silent: boolean = false) {
 
             <div className="mt-2 text-sm text-gray-700">
               <div>
-                <b>Cassa</b>: {r.progressive_number}{r.box_number ? ` (${r.box_number})` : ""}
-                {r.peso_interno_kg != null && (
-                  <span className="ml-2 text-gray-400">· int. {r.peso_interno_kg} kg</span>
+                <b>Prog.</b> {r.progressive_number}
+                {r.box_number ? <span className="ml-1 text-gray-500">(Cassa {r.box_number})</span> : ""}
+                {r.numero_interno_cassa != null && (
+                  <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-xs font-semibold text-blue-700">
+                    N° coop: {r.numero_interno_cassa}
+                  </span>
                 )}
               </div>
+              {r.peso_interno_kg != null && (
+                <div className="text-gray-400">Peso int: {r.peso_interno_kg} kg</div>
+              )}
               <div><b>Specie</b>: {r.specie || "—"}</div>
             </div>
 

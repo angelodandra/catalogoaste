@@ -14,6 +14,7 @@ type ParsedRow = {
   progressive_number: number;
   peso_interno_kg: number;
   specie: string | null;
+  numero_interno_cassa: string | null; // testo, supporta alfanumerico (es. "A123", "656")
   rowIndex: number;
 };
 
@@ -55,6 +56,7 @@ export async function POST(req: Request) {
       const a = r[0];
       const b = r[1];
       const c = r[2];
+      const d = r[3]; // 4ª colonna: numero interno cassa cooperativa (stringa, es. "000656")
 
       const pn = toNum(a);
       const pk = toNum(b);
@@ -71,7 +73,16 @@ export async function POST(req: Request) {
         continue;
       }
 
-      parsed.push({ progressive_number: pn, peso_interno_kg: Math.round(pk * 100) / 100, specie: c ? String(c).trim() : null, rowIndex: i + 1 });
+      // numero_interno_cassa: stringa alfanumerica, trimmata (es. "A123", "656", "00B7")
+      const numCassa = d != null && String(d).trim() !== "" ? String(d).trim() : null;
+
+      parsed.push({
+        progressive_number: pn,
+        peso_interno_kg: Math.round(pk * 100) / 100,
+        specie: c ? String(c).trim() : null,
+        numero_interno_cassa: numCassa,
+        rowIndex: i + 1,
+      });
     }
 
     if (parsed.length === 0) {
@@ -96,7 +107,7 @@ export async function POST(req: Request) {
     const prodByProg = new Map<number, { id: string; progressive_number: number; peso_interno_kg: number | null }>();
     for (const p of (prods || []) as any[]) prodByProg.set(p.progressive_number, p);
 
-    const matched: { progressive_number: number; peso_interno_kg: number; specie: string | null; productId: string }[] = [];
+    const matched: { progressive_number: number; peso_interno_kg: number; specie: string | null; numero_interno_cassa: string | null; productId: string }[] = [];
     const notFound: { progressive_number: number; peso_interno_kg: number }[] = [];
 
     for (const r of unique) {
@@ -105,7 +116,7 @@ export async function POST(req: Request) {
         notFound.push({ progressive_number: r.progressive_number, peso_interno_kg: r.peso_interno_kg });
         continue;
       }
-      matched.push({ progressive_number: r.progressive_number, peso_interno_kg: r.peso_interno_kg, specie: r.specie, productId: p.id });
+      matched.push({ progressive_number: r.progressive_number, peso_interno_kg: r.peso_interno_kg, specie: r.specie, numero_interno_cassa: r.numero_interno_cassa, productId: p.id });
     }
 
     const missingInFile = Array.from(prodByProg.values())
@@ -151,6 +162,8 @@ export async function POST(req: Request) {
               specie: m.specie,
               // peso visibile = interno + 0.2, arrotondato a 2 decimali
               weight_kg: Math.round((m.peso_interno_kg + 0.2) * 100) / 100,
+              // numero cassa cooperativa (4ª colonna, opzionale)
+              ...(m.numero_interno_cassa !== null ? { numero_interno_cassa: m.numero_interno_cassa } : {}),
             })
             .eq("id", m.productId)
         )

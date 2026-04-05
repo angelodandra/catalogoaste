@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import { adminFetch } from "@/lib/adminFetch";
@@ -14,6 +15,7 @@ type Product = {
   weight_kg: number | null;
   peso_interno_kg: number | null;
   specie: string | null;
+  numero_interno_cassa: string | null;
   catalogo: string | null;
 };
 
@@ -59,7 +61,18 @@ function saveToStorage(prepared: Record<string, Set<string>>) {
   } catch {}
 }
 
+// Restituisce la data di oggi in formato YYYY-MM-DD
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function FulfillmentPage() {
+  const searchParams = useSearchParams();
+
+  // Date: prende da URL params se presenti, altrimenti oggi
+  const [fromDate, setFromDate] = useState<string>(searchParams.get("from") || todayStr());
+  const [toDate, setToDate] = useState<string>(searchParams.get("to") || todayStr());
+
   const [clients, setClients] = useState<ClientOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -75,22 +88,21 @@ export default function FulfillmentPage() {
     setPrepared(loadFromStorage());
   }, []);
 
-  useEffect(() => {
+  const loadOrders = useCallback(async () => {
     (async () => {
       setLoading(true);
       setErr("");
+      setClients([]);
       try {
-        const { supabaseBrowser: sb } = await import("@/lib/supabaseBrowser");
-        const { data: sessionData } = await sb().auth.getSession();
-        const token = sessionData?.session?.access_token;
-
-        // ordini di oggi (ultimi 2 giorni per sicurezza)
-        const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+        // Filtra per il range di date selezionato
+        const from = `${fromDate}T00:00:00Z`;
+        const to   = `${toDate}T23:59:59Z`;
 
         const { data: orders, error: oErr } = await supabaseBrowser()
           .from("orders")
           .select("id, customer_name, customer_phone, created_at")
-          .gte("created_at", since)
+          .gte("created_at", from)
+          .lte("created_at", to)
           .order("customer_name", { ascending: true });
         if (oErr) throw oErr;
         if (!orders?.length) { setClients([]); return; }
@@ -98,7 +110,7 @@ export default function FulfillmentPage() {
         const orderIds = orders.map((o: any) => o.id);
         const { data: items, error: iErr } = await supabaseBrowser()
           .from("order_items")
-          .select("order_id, products(id, box_number, progressive_number, image_path, price_eur, weight_kg, peso_interno_kg, specie, catalogs(title, online_title))")
+          .select("order_id, products(id, box_number, progressive_number, image_path, price_eur, weight_kg, peso_interno_kg, specie, numero_interno_cassa, catalogs(title, online_title))")
           .in("order_id", orderIds);
         if (iErr) throw iErr;
 
@@ -127,6 +139,7 @@ export default function FulfillmentPage() {
             weight_kg: p.weight_kg ?? null,
             peso_interno_kg: p.peso_interno_kg ?? null,
             specie: p.specie ?? null,
+            numero_interno_cassa: p.numero_interno_cassa ?? null,
             catalogo,
           });
         }
@@ -170,7 +183,11 @@ export default function FulfillmentPage() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [fromDate, toDate]);
+
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
 
   function toggleProduct(orderId: string, productId: string) {
     setPrepared((prev) => {
@@ -212,12 +229,13 @@ export default function FulfillmentPage() {
       const weight = p.weight_kg != null ? `pub. ${Number(p.weight_kg).toFixed(2)} kg` : "";
       const internal = p.peso_interno_kg != null ? `int. ${Number(p.peso_interno_kg).toFixed(2)} kg` : "";
       const weights = [weight, internal].filter(Boolean).join(" · ");
+      const coopLabel = p.numero_interno_cassa ? ` &nbsp;<span style="background:#dbeafe;color:#1d4ed8;font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;">N° coop: ${p.numero_interno_cassa}</span>` : "";
       return `
         <tr style="border-bottom:1px solid #eee;">
           <td style="padding:10px 6px;">
             <span style="display:inline-block;width:18px;height:18px;border:2px solid #000;border-radius:3px;background:#000;vertical-align:middle;margin-right:8px;"></span>
             ${p.specie ? `<span style="font-size:17px;font-weight:800;">${p.specie}</span><br>` : ""}
-            <span style="font-size:13px;color:#444;">Cassa ${p.box_number ?? "?"}${p.progressive_number != null ? ` · Prog ${p.progressive_number}` : ""}</span>
+            <span style="font-size:13px;color:#444;">Cassa ${p.box_number ?? "?"}${coopLabel}</span>
             ${p.catalogo ? `<span style="color:#888;font-size:11px;font-style:italic;"> [${p.catalogo}]</span>` : ""}
             ${weights ? `<br><span style="color:#666;font-size:11px;">${weights}</span>` : ""}
           </td>
@@ -317,30 +335,61 @@ export default function FulfillmentPage() {
           />
         </div>
       )}
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Link href="/admin/orders" className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50">← Ordini</Link>
-          <div>
-            <h1 className="text-xl font-bold">Evasione ordini</h1>
-            <div className="text-xs text-gray-500">{clients.length} clienti · ultimi 2 giorni</div>
+      <div className="mb-4 flex items-center gap-3">
+        <Link href="/admin/orders" className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50">← Ordini</Link>
+        <h1 className="text-xl font-bold">Evasione ordini</h1>
+      </div>
+
+      {/* Filtro date */}
+      <div className="mb-4 rounded-xl border bg-white p-3 shadow-sm">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">Da</label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="rounded-lg border px-3 py-2 text-sm"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">A</label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="rounded-lg border px-3 py-2 text-sm"
+            />
+          </div>
+          <button
+            className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            disabled={loading}
+            onClick={loadOrders}
+          >
+            Carica ordini
+          </button>
+          <div className="text-xs text-gray-500 self-end pb-2">
+            {loading ? "Caricamento…" : `${clients.length} clienti trovati`}
           </div>
         </div>
-        <div className="flex gap-2">
-          <button
-            className="rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-40"
-            disabled={clients.every((c) => (prepared[c.orderId]?.size ?? 0) === 0)}
-            onClick={() => { if (confirm("Azzera tutti i prodotti preparati?")) resetAll(); }}
-          >
-            Azzera evasione
-          </button>
-          <button
-            className="rounded-xl bg-black px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
-            disabled={clients.every((c) => (prepared[c.orderId]?.size ?? 0) === 0)}
-            onClick={printAll}
-          >
-            Stampa tutto
-          </button>
-        </div>
+      </div>
+
+      {/* Azioni globali */}
+      <div className="mb-4 flex justify-end gap-2">
+        <button
+          className="rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-40"
+          disabled={clients.every((c) => (prepared[c.orderId]?.size ?? 0) === 0)}
+          onClick={() => { if (confirm("Azzera tutti i prodotti preparati?")) resetAll(); }}
+        >
+          Azzera evasione
+        </button>
+        <button
+          className="rounded-xl bg-black px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
+          disabled={clients.every((c) => (prepared[c.orderId]?.size ?? 0) === 0)}
+          onClick={printAll}
+        >
+          Stampa tutto
+        </button>
       </div>
 
       {clients.length === 0 && (
@@ -406,8 +455,13 @@ export default function FulfillmentPage() {
                           />
                           {/* dati */}
                           <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-sm">
-                              Cassa {p.box_number ?? "?"}{p.progressive_number != null ? ` · Prog ${p.progressive_number}` : ""}
+                            <div className="font-semibold text-sm flex flex-wrap items-center gap-1.5">
+                              <span>Cassa {p.box_number ?? "?"}</span>
+                              {p.numero_interno_cassa && (
+                                <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-semibold text-blue-700">
+                                  N° coop: {p.numero_interno_cassa}
+                                </span>
+                              )}
                             </div>
                             {p.specie && <div className="text-sm text-gray-700">{p.specie}</div>}
                             <div className="flex flex-wrap gap-x-3 text-xs text-gray-500 mt-0.5">

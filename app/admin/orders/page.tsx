@@ -365,7 +365,7 @@ setMsg(`✅ Ordini aggiornati: ${(data || []).length}`);
 
         <a
           className="rounded-lg bg-black px-4 py-2 font-semibold text-white"
-          href="/admin/orders/fulfillment"
+          href={`/admin/orders/fulfillment${fromDate && toDate ? `?from=${fromDate}&to=${toDate}` : ""}`}
         >
           📦 Evasione ordini
         </a>

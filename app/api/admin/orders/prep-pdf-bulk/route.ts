@@ -70,7 +70,7 @@ export async function GET(req: Request) {
 
     const { data: itemsData, error: iErr } = await supabase
       .from("order_items")
-      .select("order_id,qty,products(id,box_number,image_path,price_eur,weight_kg,peso_interno_kg,specie,catalogs(title,online_title))")
+      .select("order_id,qty,products(id,box_number,image_path,price_eur,weight_kg,peso_interno_kg,specie,numero_interno_cassa,catalogs(title,online_title))")
       .in("order_id", orderIds);
 
     if (iErr) throw iErr;
@@ -168,11 +168,13 @@ export async function GET(req: Request) {
 
         const xText = imgX + thumb + 14;
 
-        doc.font("Helvetica-Bold").fontSize(14).text(`Cassa ${r.box}${r.specie ? `: ${r.specie.toUpperCase()}` : ""}`, xText, y + 6);
+        const numCoopLabelBulk = r.numero_interno_cassa != null ? `   N° coop: ${r.numero_interno_cassa}` : "";
+        const titleLineBulk = `Cassa ${r.box}${numCoopLabelBulk}${r.specie ? `   ${r.specie.toUpperCase()}` : ""}`;
+        doc.font("Helvetica-Bold").fontSize(14).text(titleLineBulk, xText, y + 6);
 
         doc.font("Helvetica").fontSize(10).fillColor("gray");
         doc.text(
-          `Quantità: ${r.qty}${r.internal_weight !== null && r.internal_weight !== undefined ? `   |   Peso int: ${Number(r.internal_weight).toFixed(2)} kg` : ""}${r.weight_kg !== null && r.weight_kg !== undefined ? `   |   Peso: ${Number(r.weight_kg).toFixed(2)} kg` : ""}${r.prov ? `   |   Provenienza: ${r.prov}` : ""}`,
+          `Qtà: ${r.qty}${r.internal_weight !== null && r.internal_weight !== undefined ? `   |   Peso int: ${Number(r.internal_weight).toFixed(2)} kg` : ""}${r.weight_kg !== null && r.weight_kg !== undefined ? `   |   Peso: ≈ ${Number(r.weight_kg).toFixed(2)} kg` : ""}${r.prov ? `   |   ${r.prov}` : ""}`,
           xText,
           y + 30
         );
@@ -215,6 +217,7 @@ export async function GET(req: Request) {
         price: p?.price_eur ?? null,
         weight_kg: p?.weight_kg ?? null,
         internal_weight: p?.peso_interno_kg ?? null,
+        numero_interno_cassa: p?.numero_interno_cassa ?? null,
         specie: (p?.specie || "").toString().trim(),
         prov,
       });

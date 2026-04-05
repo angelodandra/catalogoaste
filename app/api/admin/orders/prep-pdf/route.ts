@@ -56,7 +56,7 @@ export async function GET(req: Request) {
 
     const { data: items, error: iErr } = await supabase
       .from("order_items")
-      .select("qty, products(id, box_number, image_path, price_eur, weight_kg, peso_interno_kg, specie, catalogs(title,online_title))")
+      .select("qty, products(id, box_number, image_path, price_eur, weight_kg, peso_interno_kg, specie, numero_interno_cassa, catalogs(title,online_title))")
       .eq("order_id", orderId);
     if (iErr) throw iErr;
 
@@ -119,6 +119,7 @@ export async function GET(req: Request) {
         price: p?.price_eur ?? null,
         weight: p?.weight_kg ?? null,
         internal_weight: (p as any)?.peso_interno_kg ?? null,
+        numero_interno_cassa: (p as any)?.numero_interno_cassa ?? null,
         prov: (Array.isArray((p as any)?.catalogs) ? (p as any).catalogs[0] : (p as any)?.catalogs)?.online_title
               || (Array.isArray((p as any)?.catalogs) ? (p as any).catalogs[0] : (p as any)?.catalogs)?.title
               || "",
@@ -162,14 +163,17 @@ export async function GET(req: Request) {
 
       const xText = imgX + thumb + 14;
 
-      doc.font("Helvetica-Bold").fontSize(14).text(`Cassa ${r.box}${r.specie ? `: ${r.specie.toUpperCase()}` : ""}`, xText, y + 6);
+      // Titolo riga: Cassa X  ·  N° coop: Y  ·  SPECIE
+      const numCoopLabel = (r as any).numero_interno_cassa != null ? `   N° coop: ${(r as any).numero_interno_cassa}` : "";
+      const titleLine = `Cassa ${r.box}${numCoopLabel}${r.specie ? `   ${r.specie.toUpperCase()}` : ""}`;
+      doc.font("Helvetica-Bold").fontSize(14).text(titleLine, xText, y + 6);
 
       doc.font("Helvetica").fontSize(10).fillColor("gray");
       const wInt = (r as any).internal_weight;
       const pesoIntTxt = wInt !== null && wInt !== undefined ? `   |   Peso int: ${Number(wInt).toFixed(2)} kg` : "";
       const pesoPubTxt = r.weight !== null && r.weight !== undefined ? `   |   Peso: ≈ ${Number(r.weight).toFixed(2)} kg` : "";
-      const provTxt = r.prov ? `   |   Provenienza: ${r.prov}` : "";
-      doc.text(`Quantità: ${r.qty}` + pesoIntTxt + pesoPubTxt + provTxt, xText, y + 30);
+      const provTxt = r.prov ? `   |   ${r.prov}` : "";
+      doc.text(`Qtà: ${r.qty}` + pesoIntTxt + pesoPubTxt + provTxt, xText, y + 30);
 
       const price = r.price === null || r.price === undefined ? null : Number(r.price);
       doc.text(`Prezzo: ${eur(price)}`, xText, y + 46);
