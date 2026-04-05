@@ -43,13 +43,11 @@ const PW = PAGE_W - MARGIN * 2;  // 523
 const PAGE_H = 841;
 const BOTTOM_LIMIT = PAGE_H - MARGIN - 30;
 
-function pageHeader(doc: PDFKit.PDFDocument, title: string, sub: string) {
+function pageHeader(doc: PDFKit.PDFDocument, title: string, _sub?: string) {
   doc.font("Helvetica-Bold").fontSize(15).fillColor("#000")
     .text(title, MARGIN, MARGIN + 4, { width: PW, align: "center" });
-  doc.font("Helvetica").fontSize(10).fillColor("#333")
-    .text(sub, MARGIN, doc.y + 2, { width: PW, align: "center" });
   doc.font("Helvetica").fontSize(8).fillColor("#888")
-    .text(`Stampato il ${nowIT()}`, MARGIN, doc.y + 2, { width: PW, align: "center" });
+    .text(`Stampato il ${nowIT()}`, MARGIN, doc.y + 3, { width: PW, align: "center" });
   doc.moveDown(0.6);
 }
 
