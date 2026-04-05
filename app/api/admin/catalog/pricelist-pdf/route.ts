@@ -270,11 +270,18 @@ export async function GET(req: Request) {
 
     const { data: cat } = await supabase
       .from("catalogs")
-      .select("name")
+      .select("name, created_at")
       .eq("id", catalogId)
       .single();
 
-    const catalogName = cat?.name ?? catalogId;
+    // Header: "Nome catalogo — GG/MM/AAAA"
+    const datePart = cat?.created_at
+      ? new Date(cat.created_at).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" })
+      : "";
+    const rawName = cat?.name && cat.name.trim() ? cat.name.trim() : null;
+    const catalogName = rawName
+      ? `${rawName}${datePart ? "  —  " + datePart : ""}`
+      : datePart || catalogId;
 
     const { data: prods, error } = await supabase
       .from("products")
