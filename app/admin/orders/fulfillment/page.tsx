@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
@@ -66,7 +66,7 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export default function FulfillmentPage() {
+function FulfillmentInner() {
   const searchParams = useSearchParams();
 
   // Date: prende da URL params se presenti, altrimenti oggi
@@ -514,5 +514,13 @@ export default function FulfillmentPage() {
         })}
       </div>
     </div>
+  );
+}
+
+export default function FulfillmentPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center py-20 text-gray-500">Caricamento…</div>}>
+      <FulfillmentInner />
+    </Suspense>
   );
 }
