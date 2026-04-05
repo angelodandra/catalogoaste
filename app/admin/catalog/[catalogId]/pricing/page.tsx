@@ -33,6 +33,51 @@ export default function PricingPage(props: { params: Promise<{ catalogId: string
   const [pesiPreview, setPesiPreview] = useState<any | null>(null);
   const [pesiLoading, setPesiLoading] = useState(false);
 
+  // Import da listino aste (PDF / XLSX acquisti)
+  const [asteFile, setAsteFile] = useState<File | null>(null);
+  const [asteProgressiveStart, setAsteProgressiveStart] = useState<string>("");
+  const [astePreview, setAstePreview] = useState<any | null>(null);
+  const [asteLoading, setAsteLoading] = useState(false);
+
+  async function runImportAste(mode: "preview" | "apply") {
+    if (!asteFile) {
+      setMsg("Seleziona un file listino aste (PDF o XLSX)");
+      return;
+    }
+    setAsteLoading(true);
+    setMsg(mode === "preview" ? "Anteprima listino aste…" : "Applico listino aste…");
+    try {
+      const fd = new FormData();
+      fd.append("catalogId", catalogId);
+      fd.append("mode", mode);
+      fd.append("file", asteFile);
+      if (asteProgressiveStart.trim()) {
+        fd.append("progressiveStart", asteProgressiveStart.trim());
+      }
+
+      const res = await adminFetch("/api/admin/parse-aste-source", { method: "POST", body: fd });
+      const json = await res.json();
+
+      if (!res.ok) {
+        setMsg(json.error || "Errore import listino");
+        setAstePreview(null);
+        return;
+      }
+
+      setAstePreview(json);
+      setMsg(
+        mode === "preview"
+          ? `Anteprima pronta ✅ — ${json.totals?.matched ?? 0} lotti abbinati`
+          : `Listino applicato ✅ — aggiornati: ${json.updatedCount ?? 0}`
+      );
+      if (mode === "apply") await load(true);
+    } catch (e: any) {
+      setMsg(String(e?.message || e || "Errore"));
+    } finally {
+      setAsteLoading(false);
+    }
+  }
+
   async function runImportPesi(mode: "preview" | "apply") {
     if (!pesiFile) {
       setMsg("Seleziona un file pesi (CSV o XLSX)");
@@ -206,6 +251,77 @@ async function load(silent: boolean = false) {
         Prodotti senza prezzo: <b>{notPricedCount}</b>
       </div>
 
+      {/* ── Import da listino aste ────────────────────────── */}
+      <div className="mb-4 rounded-xl border bg-white p-3">
+        <div className="text-sm font-semibold">Import da listino aste (PDF / XLSX acquisti)</div>
+        <p className="mt-1 text-xs text-gray-500">
+          Carica il PDF "Dettaglio lotti" o il file XLSX Acquisti Mercati.<br />
+          I dati (specie, peso interno, N° coop) vengono abbinati ai prodotti del catalogo in ordine di progressivo.
+        </p>
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            type="file"
+            accept=".pdf,.xlsx,.xls"
+            onChange={(e) => { setAsteFile(e.target.files?.[0] ?? null); setAstePreview(null); }}
+            className="w-full rounded border px-3 py-2"
+          />
+          <input
+            type="number"
+            placeholder="Prog. inizio (opz.)"
+            value={asteProgressiveStart}
+            onChange={(e) => setAsteProgressiveStart(e.target.value)}
+            className="w-36 rounded border px-3 py-2 text-sm"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => runImportAste("preview")}
+              disabled={asteLoading || !asteFile}
+              className="rounded border bg-white px-4 py-2 text-sm font-semibold disabled:opacity-60"
+            >
+              Anteprima
+            </button>
+            <button
+              type="button"
+              onClick={() => runImportAste("apply")}
+              disabled={asteLoading || !asteFile}
+              className="rounded bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              Applica
+            </button>
+          </div>
+        </div>
+
+        {astePreview?.totals && (
+          <div className="mt-2 text-sm text-gray-700">
+            <div>
+              Tipo file: <b>{astePreview.fileType ?? "—"}</b> — Lotti trovati: <b>{astePreview.totals.lotsFound ?? "—"}</b>
+            </div>
+            <div>
+              Abbinati: <b>{astePreview.totals.matched ?? "—"}</b> — Non abbinati: <b>{astePreview.totals.unmatched ?? "—"}</b>
+              {astePreview.totals.startAtProgressive != null && (
+                <span> — Inizio da progressivo <b>{astePreview.totals.startAtProgressive}</b></span>
+              )}
+            </div>
+            {astePreview.sample?.matched?.length > 0 && (
+              <details className="mt-1">
+                <summary className="cursor-pointer text-xs text-gray-500">Mostra anteprima abbinamenti</summary>
+                <div className="mt-1 max-h-48 overflow-y-auto rounded border bg-gray-50 p-2 text-xs font-mono">
+                  {(astePreview.sample.matched as any[]).slice(0, 20).map((m: any, i: number) => (
+                    <div key={i}>
+                      Prog. {m.progressive_number} ← Peso {m.peso_interno_kg} kg
+                      {m.specie ? `, ${m.specie}` : ""}
+                      {m.numero_interno_cassa ? ` (coop ${m.numero_interno_cassa})` : ""}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Import pesi interni ──────────────────────────── */}
       <div className="mb-4 rounded-xl border bg-white p-3">
         <div className="text-sm font-semibold">Import pesi interni (CSV/XLSX)</div>
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
