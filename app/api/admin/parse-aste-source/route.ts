@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import * as XLSX from "xlsx";
-import { PDFParse } from "pdf-parse";
-
 import { requireAdmin } from "@/lib/requireAdmin";
 
 export const runtime = "nodejs";
@@ -31,10 +29,81 @@ function parseItalianNum(s: string): number {
   return parseFloat(s.replace(",", "."));
 }
 
+/** Stub DOM types that pdf.js evaluates at module load time in Node.js */
+function stubMissingDomApis() {
+  const g = globalThis as Record<string, unknown>;
+  if (!g["DOMMatrix"]) {
+    // Minimal DOMMatrix stub — only needs to exist; actual maths not called for text extraction
+    function FakeDOMMatrix(this: any) {
+      this.a=1;this.b=0;this.c=0;this.d=1;this.e=0;this.f=0;
+      this.m11=1;this.m12=0;this.m13=0;this.m14=0;
+      this.m21=0;this.m22=1;this.m23=0;this.m24=0;
+      this.m31=0;this.m32=0;this.m33=1;this.m34=0;
+      this.m41=0;this.m42=0;this.m43=0;this.m44=1;
+      this.is2D=true;this.isIdentity=true;
+    }
+    FakeDOMMatrix.prototype.scale = function() { return new (FakeDOMMatrix as any)(); };
+    FakeDOMMatrix.prototype.translate = function() { return new (FakeDOMMatrix as any)(); };
+    FakeDOMMatrix.prototype.multiply = function() { return new (FakeDOMMatrix as any)(); };
+    FakeDOMMatrix.prototype.inverse = function() { return new (FakeDOMMatrix as any)(); };
+    g["DOMMatrix"] = FakeDOMMatrix;
+  }
+  if (!g["ImageData"]) {
+    g["ImageData"] = class { constructor(public data: any, public width: number, public height: number = 0) {} };
+  }
+  if (!g["Path2D"]) {
+    g["Path2D"] = class { moveTo(){}; lineTo(){}; closePath(){}; addPath(){} };
+  }
+}
+
 async function parsePdf(buf: Buffer): Promise<ParsedLot[]> {
-  const parser = new PDFParse({ data: buf });
-  const result = await parser.getText();
-  const lines = result.text.split("\n");
+  // pdfjs-dist v5 legacy build — designed for Node.js environments.
+  // Build a proper file:// URL using pathToFileURL (handles all platforms correctly).
+  const nodePath = await import("path");
+  const nodeUrl  = await import("url");
+  const workerAbs = nodePath.default.join(
+    process.cwd(),
+    "node_modules", "pdfjs-dist", "legacy", "build", "pdf.worker.min.mjs"
+  );
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs" as any);
+  pdfjsLib.GlobalWorkerOptions.workerSrc = nodeUrl.pathToFileURL(workerAbs).href;
+
+  const loadingTask = pdfjsLib.getDocument({
+    data: new Uint8Array(buf),
+    useSystemFonts: true,
+    disableRange: true,
+    disableStream: true,
+    disableAutoFetch: true,
+  });
+
+  const pdf = await loadingTask.promise;
+  let rawText = "";
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const content = await page.getTextContent();
+    const items = content.items as Array<{ str: string; transform: number[] }>;
+
+    // Reconstruct lines by grouping items with the same Y coordinate.
+    // Items on the same line are separated by a space; Y changes → newline.
+    let prevY: number | null = null;
+    for (const item of items) {
+      const y = Math.round(item.transform[5]);
+      if (prevY !== null) {
+        if (Math.abs(y - prevY) > 2) {
+          rawText += "\n"; // different row
+        } else if (!rawText.endsWith(" ")) {
+          rawText += " "; // same row — space between items
+        }
+      }
+      rawText += item.str;
+      prevY = y;
+    }
+    rawText += "\n";
+  }
+
+  const lines = rawText.split("\n");
 
   const lots: ParsedLot[] = [];
   let rowIndex = 0;
