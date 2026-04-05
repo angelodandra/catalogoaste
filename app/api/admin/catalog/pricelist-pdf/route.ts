@@ -43,9 +43,13 @@ const PW = PAGE_W - MARGIN * 2;  // 523
 const PAGE_H = 841;
 const BOTTOM_LIMIT = PAGE_H - MARGIN - 30;
 
-function pageHeader(doc: PDFKit.PDFDocument, title: string, _sub?: string) {
+function pageHeader(doc: PDFKit.PDFDocument, title: string, sub?: string) {
   doc.font("Helvetica-Bold").fontSize(15).fillColor("#000")
     .text(title, MARGIN, MARGIN + 4, { width: PW, align: "center" });
+  if (sub) {
+    doc.font("Helvetica-Bold").fontSize(10).fillColor("#333")
+      .text(sub, MARGIN, doc.y + 3, { width: PW, align: "center" });
+  }
   doc.font("Helvetica").fontSize(8).fillColor("#888")
     .text(`Stampato il ${nowIT()}`, MARGIN, doc.y + 3, { width: PW, align: "center" });
   doc.moveDown(0.6);
@@ -132,13 +136,13 @@ function tableRow(doc: PDFKit.PDFDocument, p: Product, idx: number) {
 }
 
 function buildIndividualPdf(doc: PDFKit.PDFDocument, products: Product[], catalogName: string) {
-  pageHeader(doc, "LISTINO PREZZI", catalogName);
+  pageHeader(doc, "LISTINO PREZZI", catalogName || undefined);
   tableHeader(doc);
 
   for (let i = 0; i < products.length; i++) {
     if (doc.y + ROW_H > BOTTOM_LIMIT) {
       doc.addPage();
-      pageHeader(doc, "LISTINO PREZZI (segue)", catalogName);
+      pageHeader(doc, "LISTINO PREZZI (segue)", catalogName || undefined);
       tableHeader(doc);
     }
     tableRow(doc, products[i], i);
@@ -160,7 +164,7 @@ type Group = {
 };
 
 function buildGroupedPdf(doc: PDFKit.PDFDocument, products: Product[], catalogName: string) {
-  pageHeader(doc, "LISTINO PREZZI PER SPECIE", catalogName);
+  pageHeader(doc, "LISTINO PREZZI PER SPECIE", catalogName || undefined);
 
   // Build groups by specie+price key
   const groupMap = new Map<string, Group>();
@@ -188,7 +192,7 @@ function buildGroupedPdf(doc: PDFKit.PDFDocument, products: Product[], catalogNa
     const needed = GROUP_H + g.items.length * ITEM_H + SUMMARY_H + 10;
     if (doc.y + Math.min(needed, GROUP_H + ITEM_H * 2) > BOTTOM_LIMIT) {
       doc.addPage();
-      pageHeader(doc, "LISTINO PREZZI PER SPECIE (segue)", catalogName);
+      pageHeader(doc, "LISTINO PREZZI PER SPECIE (segue)", catalogName || undefined);
     }
 
     // Group title bar
@@ -203,7 +207,7 @@ function buildGroupedPdf(doc: PDFKit.PDFDocument, products: Product[], catalogNa
     for (let i = 0; i < g.items.length; i++) {
       if (doc.y + ITEM_H > BOTTOM_LIMIT) {
         doc.addPage();
-        pageHeader(doc, "LISTINO PREZZI PER SPECIE (segue)", catalogName);
+        pageHeader(doc, "LISTINO PREZZI PER SPECIE (segue)", catalogName || undefined);
         doc.font("Helvetica").fontSize(9).fillColor("#333");
       }
       const p = g.items[i];
@@ -272,14 +276,9 @@ export async function GET(req: Request) {
       .eq("id", catalogId)
       .single();
 
-    // Header: "Nome catalogo — GG/MM/AAAA"
-    const datePart = cat?.created_at
-      ? new Date(cat.created_at).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" })
-      : "";
+    // Subtitle: show only the user-typed catalog name; never fall back to UUID
     const rawName = cat?.name && cat.name.trim() ? cat.name.trim() : null;
-    const catalogName = rawName
-      ? `${rawName}${datePart ? "  —  " + datePart : ""}`
-      : datePart || catalogId;
+    const catalogName = rawName ?? "";
 
     const { data: prods, error } = await supabase
       .from("products")
