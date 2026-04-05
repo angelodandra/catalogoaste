@@ -93,22 +93,22 @@ const COL_PROG   = 32;
 const COL_SPECIE = 185;
 const COL_PESO   = 80;
 const COL_PREZZO = 82;
-const COL_CASSA  = PW - COL_PROG - COL_SPECIE - COL_PESO - COL_PREZZO; // 144
+const COL_GAP    = 12;  // spazio visivo tra Prezzo e Cassa
+const COL_CASSA  = PW - COL_PROG - COL_SPECIE - COL_PESO - COL_PREZZO - COL_GAP; // 132
 
 const ROW_H = 17;
 
 function tableHeader(doc: PDFKit.PDFDocument) {
   const y = doc.y;
-  // Background for header
   doc.rect(MARGIN, y, PW, ROW_H).fill("#f0f0f0");
   doc.fillColor("#000");
 
   let x = MARGIN;
-  cell(doc, "Prog.",   x, y + 4, COL_PROG,   { bold: true });  x += COL_PROG;
-  cell(doc, "Specie",  x, y + 4, COL_SPECIE, { bold: true });  x += COL_SPECIE;
-  cell(doc, "Peso int.", x, y + 4, COL_PESO, { bold: true, align: "right" }); x += COL_PESO;
-  cell(doc, "Prezzo",  x, y + 4, COL_PREZZO, { bold: true, align: "right" }); x += COL_PREZZO;
-  cell(doc, "Cassa",   x, y + 4, COL_CASSA,  { bold: true });
+  cell(doc, "Prog.",     x, y + 4, COL_PROG,   { bold: true });  x += COL_PROG;
+  cell(doc, "Specie",    x, y + 4, COL_SPECIE, { bold: true });  x += COL_SPECIE;
+  cell(doc, "Peso int.", x, y + 4, COL_PESO,   { bold: true, align: "right" }); x += COL_PESO;
+  cell(doc, "Prezzo",    x, y + 4, COL_PREZZO, { bold: true, align: "right" }); x += COL_PREZZO + COL_GAP;
+  cell(doc, "N° coop",   x, y + 4, COL_CASSA,  { bold: true });
 
   doc.y = y + ROW_H + 2;
 }
@@ -120,14 +120,14 @@ function tableRow(doc: PDFKit.PDFDocument, p: Product, idx: number) {
   }
   doc.fillColor("#000");
 
-  // Mostra solo il numero coop tra parentesi (senza il numero cassa C.)
+  // Solo il numero coop tra parentesi; fallback al box_number
   const cassa = p.numero_interno_cassa ? `(${p.numero_interno_cassa})` : (p.box_number ?? "—");
 
   let x = MARGIN;
   cell(doc, String(p.progressive_number), x, y + 3, COL_PROG);  x += COL_PROG;
   cell(doc, p.specie || "—",              x, y + 3, COL_SPECIE); x += COL_SPECIE;
   cell(doc, fmtKg(p.peso_interno_kg),     x, y + 3, COL_PESO,   { align: "right" }); x += COL_PESO;
-  cell(doc, fmtEur(p.price_eur),          x, y + 3, COL_PREZZO, { align: "right" }); x += COL_PREZZO;
+  cell(doc, fmtEur(p.price_eur),          x, y + 3, COL_PREZZO, { align: "right" }); x += COL_PREZZO + COL_GAP;
   cell(doc, cassa,                        x, y + 3, COL_CASSA);
 
   doc.y = y + ROW_H;
