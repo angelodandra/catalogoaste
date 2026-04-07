@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { sendWhatsAppOrder } from "@/lib/twilioSend";
+import { requireAdmin, adminErrorResponse } from "@/lib/requireAdmin";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
+  try {
+    await requireAdmin(req);
+  } catch (e: any) {
+    return adminErrorResponse(e);
+  }
+
   try {
     const { to } = await req.json();
     if (!to) return NextResponse.json({ error: "to mancante" }, { status: 400 });

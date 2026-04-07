@@ -192,9 +192,6 @@ if (rErr) {
 
 reservedOk = true;
 
-// DEBUG: forza errore subito dopo la reserve (per test rollback)
-    if (body?.debugFailAfterReserve) throw new Error("DEBUG_FAIL_AFTER_RESERVE");
-
     // 4) salva righe ordine (solo prodotti disponibili)
     const rows = availableItems.map((it) => ({
       order_id: order.id,
