@@ -60,6 +60,8 @@ async function pdfToBuffer(build: (doc: PDFKit.PDFDocument) => Promise<void>) {
 
 export async function GET(req: Request) {
   try {
+    await requireAdmin(req);
+
     const url = new URL(req.url);
     const catalogId = safeStr(url.searchParams.get("catalogId")).trim();
     if (!catalogId) return new NextResponse("catalogId mancante", { status: 400 });
@@ -76,7 +78,16 @@ export async function GET(req: Request) {
 
     const products = (prods || []) as any[];
 
-    const logoBuf = await loadLogoBuffer();
+    const [logoBuf, imageBufs] = await Promise.all([
+      loadLogoBuffer(),
+      // Scarica tutte le immagini in parallelo invece di una alla volta
+      Promise.all(
+        products.map((p: any) => {
+          const imgPath = safeStr(p.image_path).trim();
+          return imgPath ? fetchImageBuffer(publicImageUrl(imgPath)) : Promise.resolve(null);
+        })
+      ),
+    ]);
 
     const pdf = await pdfToBuffer(async (doc) => {
       const pageW = doc.page.width;
@@ -101,18 +112,15 @@ export async function GET(req: Request) {
       const drawHeader = () => {
         const topY = doc.page.margins.top;
 
-        // Logo centrato (se presente in /public/logo.jpg|png)
         if (logoBuf) {
           const maxW = 190;
           const maxH = 48;
           const xLogo = (pageW - maxW) / 2;
-          doc.image(logoBuf, xLogo, topY - 6, { fit: [maxW, maxH], align: "center"});
+          doc.image(logoBuf, xLogo, topY - 6, { fit: [maxW, maxH], align: "center" });
         } else {
-          // fallback testo se il logo non c'è
           doc.fontSize(18).font("Helvetica-Bold").text("F.lli D'Andrassi", startX, topY);
         }
 
-        // info sotto (pulite, piccole)
         const infoY = topY + 44;
         doc.fontSize(10).font("Helvetica").text(`Catalogo: ${catalogId}`, startX, infoY);
         doc.fontSize(10).font("Helvetica").text(`Stampa: ${nowIT()}`, startX, infoY + 14);
@@ -153,28 +161,25 @@ export async function GET(req: Request) {
         const imgW = cellW - pad * 2;
         const imgH = cellH - pad * 2 - 18;
 
-        const path = safeStr(p.image_path).trim();
-        if (path) {
-          const img = await fetchImageBuffer(publicImageUrl(path));
-          if (img) {
-            try {
-              doc.image(img, imgX, imgY, { fit: [imgW, imgH], align: "center", valign: "center" });
-            } catch {
-              doc.fontSize(9).fillColor("gray").text("Immagine non disponibile", imgX, imgY + imgH / 2);
-              doc.fillColor("black");
-            }
-          } else {
+        const img = imageBufs[i];
+        if (img) {
+          try {
+            doc.image(img, imgX, imgY, { fit: [imgW, imgH], align: "center", valign: "center" });
+          } catch {
             doc.fontSize(9).fillColor("gray").text("Immagine non disponibile", imgX, imgY + imgH / 2);
             doc.fillColor("black");
           }
         } else {
-          doc.fontSize(9).fillColor("gray").text("Immagine mancante", imgX, imgY + imgH / 2);
+          doc.fontSize(9).fillColor("gray").text(
+            safeStr(p.image_path).trim() ? "Immagine non disponibile" : "Immagine mancante",
+            imgX, imgY + imgH / 2
+          );
           doc.fillColor("black");
         }
 
-        const internalTxt = p.peso_interno_kg !== null && p.peso_interno_kg !== undefined ? ` — int ${Number(p.peso_interno_kg).toFixed(2)} kg` : "";
-        const weightTxt = p.weight_kg !== null && p.weight_kg !== undefined ? ` — ≈ ${Number(p.weight_kg).toFixed(2)} kg` : "";
-        const priceTxt = p.price_eur !== null && p.price_eur !== undefined ? `€ ${Number(p.price_eur).toFixed(2)}` : "—";
+        const internalTxt = p.peso_interno_kg != null ? ` — int ${Number(p.peso_interno_kg).toFixed(2)} kg` : "";
+        const weightTxt = p.weight_kg != null ? ` — ≈ ${Number(p.weight_kg).toFixed(2)} kg` : "";
+        const priceTxt = p.price_eur != null ? `€ ${Number(p.price_eur).toFixed(2)}` : "—";
         doc.fontSize(12).font("Helvetica-Bold").text(`Cassa ${box}${internalTxt}${weightTxt} — ${priceTxt}`, x + pad, y + cellH - 27, { width: cellW - pad * 2 });
         doc.font("Helvetica");
       }

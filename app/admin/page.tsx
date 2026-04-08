@@ -113,6 +113,8 @@ export default function AdminPage() {
 
   // Upload singolo / bulk per catalogo espanso
   const [expandedUpload, setExpandedUpload] = useState<string | null>(null);
+  // PDF in generazione per catalogo
+  const [pdfLoading, setPdfLoading] = useState<string | null>(null);
 
   async function loadCatalogs() {
     const { data, error } = await supabaseBrowser()
@@ -266,12 +268,17 @@ export default function AdminPage() {
   }
 
   async function openPdf(catalogId: string) {
-    const res = await adminFetch(`/api/admin/catalog/pdf?catalogId=${catalogId}`);
-    if (!res.ok) return show("Errore generazione PDF", "err");
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    setPdfLoading(catalogId);
+    try {
+      const res = await adminFetch(`/api/admin/catalog/pdf?catalogId=${catalogId}`);
+      if (!res.ok) return show("Errore generazione PDF", "err");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } finally {
+      setPdfLoading(null);
+    }
   }
 
   return (
@@ -429,82 +436,89 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Azioni principali */}
-              <div className="flex flex-wrap gap-2">
-                <a
-                  href={`/catalog/${c.id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="cursor-pointer rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
-                >
-                  Apri
-                </a>
+              {/* Azioni */}
+              <div className="flex flex-col gap-2">
+                {/* Riga 1 — Visualizzazione e prezzi */}
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href={`/catalog/${c.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="cursor-pointer rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+                  >
+                    🔗 Apri catalogo
+                  </a>
 
-                <button
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(`${window.location.origin}/catalog/${c.id}`);
-                    show("Link copiato");
-                  }}
-                  className="cursor-pointer rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
-                >
-                  Copia link
-                </button>
+                  <button
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(`${window.location.origin}/catalog/${c.id}`);
+                      show("Link copiato");
+                    }}
+                    className="cursor-pointer rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+                  >
+                    📋 Copia link
+                  </button>
 
-                <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50">
-                  <input
-                    type="checkbox"
-                    checked={!!c.is_visible}
-                    onChange={() => toggleVisible(c)}
-                    className="h-3.5 w-3.5"
-                  />
-                  Visibile
-                </label>
+                  <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={!!c.is_visible}
+                      onChange={() => toggleVisible(c)}
+                      className="h-3.5 w-3.5"
+                    />
+                    Visibile clienti
+                  </label>
 
-                <Link
-                  href={`/admin/catalog/${c.id}/pricing`}
-                  className="cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
-                >
-                  Prezzi
-                </Link>
+                  <Link
+                    href={`/admin/catalog/${c.id}/pricing`}
+                    className="cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    💰 Prezzi
+                  </Link>
 
-                <Link
-                  href={`/admin/catalog/${c.id}/pricelist`}
-                  className="cursor-pointer rounded-lg border border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-50"
-                >
-                  Listino
-                </Link>
+                  <Link
+                    href={`/admin/catalog/${c.id}/pricelist`}
+                    className="cursor-pointer rounded-lg border border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-50"
+                  >
+                    📄 Listino
+                  </Link>
 
-                <button
-                  onClick={() => openPdf(c.id)}
-                  className="cursor-pointer rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
-                >
-                  PDF
-                </button>
+                  <button
+                    onClick={() => openPdf(c.id)}
+                    disabled={pdfLoading === c.id}
+                    className="cursor-pointer rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {pdfLoading === c.id ? "⏳ Generazione…" : "🖨 PDF catalogo"}
+                  </button>
+                </div>
 
-                <button
-                  onClick={() => setConfirmDeleteSold(c)}
-                  disabled={loading}
-                  className="cursor-pointer rounded-lg border border-orange-300 bg-orange-50 px-3 py-1.5 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50"
-                >
-                  Elimina venduti
-                </button>
+                {/* Riga 2 — Gestione */}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setExpandedUpload(expandedUpload === c.id ? null : c.id)}
+                    className={`cursor-pointer rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50 ${
+                      expandedUpload === c.id ? "bg-gray-100" : ""
+                    }`}
+                  >
+                    📷 Upload foto {expandedUpload === c.id ? "▲" : "▼"}
+                  </button>
 
-                <button
-                  onClick={() => setExpandedUpload(expandedUpload === c.id ? null : c.id)}
-                  className={`rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50 ${
-                    expandedUpload === c.id ? "bg-gray-100" : ""
-                  }`}
-                >
-                  Upload foto {expandedUpload === c.id ? "▲" : "▼"}
-                </button>
+                  <button
+                    onClick={() => setConfirmDeleteSold(c)}
+                    disabled={loading}
+                    className="cursor-pointer rounded-lg border border-orange-300 bg-orange-50 px-3 py-1.5 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+                  >
+                    🧹 Nascondi venduti
+                  </button>
 
-                <button
-                  onClick={() => setConfirmDelete(c)}
-                  disabled={loading}
-                  className="cursor-pointer rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"
-                >
-                  Elimina
-                </button>
+                  <button
+                    onClick={() => setConfirmDelete(c)}
+                    disabled={loading}
+                    className="cursor-pointer rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                  >
+                    🗑 Elimina catalogo
+                  </button>
+                </div>
               </div>
             </div>
 
