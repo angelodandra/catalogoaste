@@ -83,13 +83,13 @@ function ConfirmModal({
         <div className="mt-5 flex justify-end gap-3">
           <button
             onClick={onCancel}
-            className="rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-gray-50"
+            className="cursor-pointer rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-gray-50"
           >
             Annulla
           </button>
           <button
             onClick={onConfirm}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
+            className="cursor-pointer rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
           >
             Conferma
           </button>
@@ -381,7 +381,7 @@ export default function AdminPage() {
           <button
             onClick={createCatalog}
             disabled={createLoading}
-            className="rounded-lg bg-black px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 hover:bg-gray-800"
+            className="cursor-pointer rounded-lg bg-black px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 hover:bg-gray-800"
           >
             {createLoading ? "Creazione…" : "Crea catalogo"}
           </button>
@@ -394,7 +394,7 @@ export default function AdminPage() {
         <button
           onClick={() => { loadCatalogs(); loadStats(); }}
           disabled={loading}
-          className="rounded-lg border px-3 py-1.5 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
+          className="cursor-pointer rounded-lg border px-3 py-1.5 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
         >
           Aggiorna
         </button>
@@ -435,7 +435,7 @@ export default function AdminPage() {
                   href={`/catalog/${c.id}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+                  className="cursor-pointer rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
                 >
                   Apri
                 </a>
@@ -445,7 +445,7 @@ export default function AdminPage() {
                     await navigator.clipboard.writeText(`${window.location.origin}/catalog/${c.id}`);
                     show("Link copiato");
                   }}
-                  className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+                  className="cursor-pointer rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
                 >
                   Copia link
                 </button>
@@ -462,21 +462,21 @@ export default function AdminPage() {
 
                 <Link
                   href={`/admin/catalog/${c.id}/pricing`}
-                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
+                  className="cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
                 >
                   Prezzi
                 </Link>
 
                 <Link
                   href={`/admin/catalog/${c.id}/pricelist`}
-                  className="rounded-lg border border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-50"
+                  className="cursor-pointer rounded-lg border border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-50"
                 >
                   Listino
                 </Link>
 
                 <button
                   onClick={() => openPdf(c.id)}
-                  className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+                  className="cursor-pointer rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
                 >
                   PDF
                 </button>
@@ -484,7 +484,7 @@ export default function AdminPage() {
                 <button
                   onClick={() => setConfirmDeleteSold(c)}
                   disabled={loading}
-                  className="rounded-lg border border-orange-300 bg-orange-50 px-3 py-1.5 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+                  className="cursor-pointer rounded-lg border border-orange-300 bg-orange-50 px-3 py-1.5 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50"
                 >
                   Elimina venduti
                 </button>
@@ -501,7 +501,7 @@ export default function AdminPage() {
                 <button
                   onClick={() => setConfirmDelete(c)}
                   disabled={loading}
-                  className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                  className="cursor-pointer rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"
                 >
                   Elimina
                 </button>
@@ -536,7 +536,7 @@ export default function AdminPage() {
                       <button
                         type="submit"
                         disabled={loading}
-                        className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 hover:bg-gray-800"
+                        className="cursor-pointer rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 hover:bg-gray-800"
                       >
                         Aggiungi foto
                       </button>
@@ -581,7 +581,7 @@ export default function AdminPage() {
                       <button
                         type="submit"
                         disabled={loading}
-                        className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 hover:bg-gray-800"
+                        className="cursor-pointer rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 hover:bg-gray-800"
                       >
                         Carica tutte
                       </button>

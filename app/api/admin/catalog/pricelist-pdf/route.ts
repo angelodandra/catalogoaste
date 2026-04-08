@@ -2,10 +2,24 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import PDFDocument from "pdfkit";
 import { requireAdmin } from "@/lib/requireAdmin";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 export const runtime = "nodejs";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
+
+async function loadLogoBuffer(): Promise<Buffer | null> {
+  const candidates = ["logo.jpg", "logo.jpeg", "logo.png"];
+  for (const f of candidates) {
+    try {
+      const full = path.join(process.cwd(), "public", f);
+      const buf = await fs.readFile(full);
+      if (buf && buf.length) return buf;
+    } catch {}
+  }
+  return null;
+}
 
 function nowIT() {
   return new Date().toLocaleDateString("it-IT", {
@@ -43,9 +57,22 @@ const PW = PAGE_W - MARGIN * 2;  // 523
 const PAGE_H = 841;
 const BOTTOM_LIMIT = PAGE_H - MARGIN - 30;
 
+let _logoBuf: Buffer | null = null;
+
 function pageHeader(doc: PDFKit.PDFDocument, title: string, sub?: string) {
+  let y = MARGIN;
+
+  // Logo centrato (se presente in /public/logo.jpg|jpeg|png)
+  if (_logoBuf) {
+    const maxW = 190;
+    const maxH = 44;
+    const xLogo = (PAGE_W - maxW) / 2;
+    doc.image(_logoBuf, xLogo, y - 4, { fit: [maxW, maxH], align: "center" });
+    y += maxH + 4;
+  }
+
   doc.font("Helvetica-Bold").fontSize(15).fillColor("#000")
-    .text(title, MARGIN, MARGIN + 4, { width: PW, align: "center" });
+    .text(title, MARGIN, y, { width: PW, align: "center" });
   if (sub) {
     doc.font("Helvetica-Bold").fontSize(15).fillColor("#333")
       .text(sub, MARGIN, doc.y + 3, { width: PW, align: "center" });
@@ -261,6 +288,9 @@ function p_eur_str(g: Group): string {
 export async function GET(req: Request) {
   try {
     await requireAdmin(req);
+
+    // Carica logo una volta sola per questa richiesta
+    _logoBuf = await loadLogoBuffer();
 
     const url = new URL(req.url);
     const catalogId = url.searchParams.get("catalogId") ?? "";

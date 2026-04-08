@@ -121,17 +121,6 @@ export function Grid3x3(props: {
       </div>
 
 
-      <style jsx global>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes popIn {
-          from { opacity: 0; transform: scale(0.92); }
-          to { opacity: 1; transform: scale(1); }
-        }
-      `}</style>
-
       {preview && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"

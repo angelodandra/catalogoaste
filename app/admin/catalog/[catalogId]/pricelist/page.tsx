@@ -97,21 +97,21 @@ export default function PricelistPage(props: { params: Promise<{ catalogId: stri
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold"
+            className="cursor-pointer rounded-lg border bg-white px-3 py-2 text-sm font-semibold"
             onClick={() => router.push("/admin")}
           >
             ← Admin
           </button>
           <button
             type="button"
-            className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold"
-            onClick={() => router.push(`/admin/catalog/${catalogId}/listino`)}
+            className="cursor-pointer rounded-lg border bg-white px-3 py-2 text-sm font-semibold"
+            onClick={() => router.push(`/admin/catalog/${catalogId}/pricing`)}
           >
             ← Catalogo
           </button>
           <button
             type="button"
-            className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold"
+            className="cursor-pointer rounded-lg border bg-white px-3 py-2 text-sm font-semibold"
             onClick={() => router.push(`/admin/catalog/${catalogId}/pricing`)}
           >
             Prezzi
