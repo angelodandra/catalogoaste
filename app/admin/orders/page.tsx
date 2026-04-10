@@ -69,6 +69,9 @@ export default function AdminOrdersPage() {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
 
+  // Ricerca
+  const [searchQuery, setSearchQuery] = useState("");
+
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
   // ─── Gruppi per cliente ───────────────────────────────────────────────────
@@ -94,6 +97,30 @@ export default function AdminOrdersPage() {
     }
     return Object.values(map).sort((a, b) => b.latestAt.localeCompare(a.latestAt));
   }, [orders, customerByPhone]);
+
+  // ─── Liste filtrate per ricerca ───────────────────────────────────────────
+  const filteredOrders = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return orders;
+    return orders.filter((o) => {
+      const company = customerByPhone[o.customer_phone]?.company ?? "";
+      return (
+        o.customer_name.toLowerCase().includes(q) ||
+        o.customer_phone.includes(q) ||
+        (company as string).toLowerCase().includes(q)
+      );
+    });
+  }, [orders, searchQuery, customerByPhone]);
+
+  const filteredClientGroups = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return clientGroups;
+    return clientGroups.filter((g) =>
+      g.name.toLowerCase().includes(q) ||
+      g.phone.includes(q) ||
+      (g.company ?? "").toLowerCase().includes(q)
+    );
+  }, [clientGroups, searchQuery]);
 
   function getClientItems(group: ClientGroup): OrderItemRow[] {
     const all: OrderItemRow[] = [];
@@ -239,8 +266,28 @@ export default function AdminOrdersPage() {
       });
       const json = await res.json();
       if (!res.ok) { alert(json.error || "Errore rimuovendo dall'ordine"); return; }
-      alert("Rimossa dall'ordine ✅");
-      await loadItems(orderId);
+
+      // Controlla se l'ordine è rimasto vuoto
+      const { data: remaining } = await supabaseBrowser()
+        .from("order_items")
+        .select("id")
+        .eq("order_id", orderId);
+
+      if ((remaining || []).length === 0) {
+        // Ultima cassa rimossa → cancella automaticamente l'ordine
+        await adminFetch("/api/admin/cancel-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId }),
+        });
+        alert("Ultima cassa rimossa: ordine annullato automaticamente ✅");
+        setItemsByOrder((prev) => { const n = { ...prev }; delete n[orderId]; return n; });
+        setAllItemsLoaded(false);
+      } else {
+        alert("Rimossa dall'ordine ✅");
+        await loadItems(orderId);
+      }
+
       await loadOrders();
     } finally {
       setLoading(false);
@@ -593,6 +640,24 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
+      {/* RICERCA */}
+      <div className="mb-4">
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="🔍 Cerca per nome, telefono o azienda…"
+          className="w-full rounded-xl border bg-white px-4 py-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-black/20"
+        />
+        {searchQuery && (
+          <div className="mt-1 text-xs text-gray-500">
+            {viewMode === "orders"
+              ? `${filteredOrders.length} di ${orders.length} ordini`
+              : `${filteredClientGroups.length} di ${clientGroups.length} clienti`}
+          </div>
+        )}
+      </div>
+
       {msg && <div className="mb-3 text-sm">{msg}</div>}
 
       {/* ══════════════════════════════════════════════════════
@@ -600,7 +665,7 @@ export default function AdminOrdersPage() {
       ══════════════════════════════════════════════════════ */}
       {viewMode === "orders" && (
         <div className="grid gap-3">
-          {orders.map((o) => (
+          {filteredOrders.map((o) => (
             <div key={o.id} className="rounded-2xl border bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -730,7 +795,7 @@ export default function AdminOrdersPage() {
             <div className="text-center text-sm text-gray-500 py-6">⏳ Caricamento casse in corso…</div>
           )}
 
-          {clientGroups.map((group) => {
+          {filteredClientGroups.map((group) => {
             const items = getClientItems(group);
             const isWaLoading = clientWaLoading === group.key;
             const isPdfLoading = clientPdfLoading === group.key;
