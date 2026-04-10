@@ -26,6 +26,7 @@ type OrderItemRow = {
     image_path: string;
     is_sold: boolean;
     price_eur: number | null;
+    specie?: string | null;
   } | null;
 };
 
@@ -181,7 +182,7 @@ export default function AdminOrdersPage() {
     try {
       const { data, error } = await supabaseBrowser()
         .from("order_items")
-        .select("order_id, qty, products(id, progressive_number, box_number, image_path, is_sold, price_eur)")
+        .select("order_id, qty, products(id, progressive_number, box_number, image_path, is_sold, price_eur, specie)")
         .eq("order_id", orderId);
       if (error) { alert(error.message); return; }
       setItemsByOrder((prev) => ({ ...prev, [orderId]: (data || []) as any }));
@@ -200,7 +201,7 @@ export default function AdminOrdersPage() {
     try {
       const { data, error } = await supabaseBrowser()
         .from("order_items")
-        .select("order_id, qty, products(id, progressive_number, box_number, image_path, is_sold, price_eur)")
+        .select("order_id, qty, products(id, progressive_number, box_number, image_path, is_sold, price_eur, specie)")
         .in("order_id", orders.map((o) => o.id));
       if (error) { setMsg("Errore casse: " + error.message); return; }
       const byOrder: Record<string, OrderItemRow[]> = {};
@@ -447,7 +448,10 @@ export default function AdminOrdersPage() {
         if (price !== null) total += price * it.qty;
         const priceStr = price !== null ? `€ ${price.toFixed(2)}` : "—";
         const qtyStr = it.qty > 1 ? ` ×${it.qty}` : "";
-        righe.push(`  • Cassa ${p.box_number}${qtyStr}  —  ${priceStr}`);
+        const descrizione = p.specie
+          ? p.specie.charAt(0).toUpperCase() + p.specie.slice(1).toLowerCase()
+          : `Cassa ${p.box_number}`;
+        righe.push(`  • ${descrizione}${qtyStr}  —  ${priceStr}`);
       }
 
       const totaleRiga = total > 0 ? `\n💰 *Totale: € ${total.toFixed(2)}*` : "";
