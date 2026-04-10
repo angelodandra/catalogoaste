@@ -44,6 +44,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const from = safeStr(url.searchParams.get("from")).trim(); // YYYY-MM-DD
     const to = safeStr(url.searchParams.get("to")).trim();     // YYYY-MM-DD
+    const orderIdsParam = url.searchParams.getAll("orderIds").flatMap(s => s.split(",")).map(s => s.trim()).filter(Boolean);
 
     const supabase = supabaseServer();
 
@@ -53,7 +54,9 @@ export async function GET(req: Request) {
       .order("created_at", { ascending: true })
       .limit(2000);
 
-    if (from && to) {
+    if (orderIdsParam.length > 0) {
+      q = q.in("id", orderIdsParam);
+    } else if (from && to) {
       q = q.gte("created_at", `${from}T00:00:00Z`).lte("created_at", `${to}T23:59:59Z`);
     }
 
