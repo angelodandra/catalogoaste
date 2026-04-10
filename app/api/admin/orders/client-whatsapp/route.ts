@@ -15,18 +15,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "orderIds (array) e phone sono richiesti" }, { status: 400 });
     }
 
-    const ownerPhone = process.env.OWNER_PHONE || "";
-    if (!ownerPhone) {
-      return NextResponse.json({ error: "OWNER_PHONE non configurato" }, { status: 500 });
-    }
-
     const appBaseUrl = process.env.APP_BASE_URL || new URL(req.url).origin;
-
-    // 1) Genera PDF combinato chiamando prep-pdf-bulk internamente
-    //    Passa il token di autorizzazione dalla request originale
     const authHeader = req.headers.get("Authorization") || req.headers.get("authorization") || "";
-    const qs = (orderIds as string[]).map((id) => `orderIds=${encodeURIComponent(id)}`).join("&");
+    const ownerPhone = process.env.OWNER_PHONE || "";
 
+    // 1) Genera PDF combinato preparazione (uso interno)
+    const qs = (orderIds as string[]).map((id) => `orderIds=${encodeURIComponent(id)}`).join("&");
     let pdfPublicUrl: string | null = null;
 
     try {
@@ -50,31 +44,33 @@ export async function POST(req: Request) {
         }
       }
     } catch {
-      // PDF non disponibile, ma proviamo comunque a inviare il WA senza media
+      // PDF non disponibile
     }
 
-    // 2) Costruisce messaggio WA
+    // 2) Messaggio riepilogo interno per il titolare
     const bodyText =
-      `🧾 RIEPILOGO ORDINI\n` +
+      `Riepilogo ordini\n` +
       `Cliente: ${name}\n` +
       `Tel: ${phone}\n` +
       `Ordini: ${orderIds.length}`;
 
-    // 3) Invia WA al numero master
-    //    NB: Twilio sandbox invia SOLO al numero master verificato.
-    //    In produzione aggiungere `phone` all'array per mandarlo anche al cliente.
+    // 3) Invia al numero master (sandbox Twilio: solo numero verificato)
+    if (!ownerPhone) {
+      return NextResponse.json({ error: "OWNER_PHONE non configurato" }, { status: 500 });
+    }
+
     const result = await sendWhatsAppOrder({
       toPhones: [ownerPhone],
       body: bodyText,
       mediaUrl: pdfPublicUrl,
     });
 
-    const ok = (result.ok ?? 0) > 0 && (result.failed ?? 0) === 0;
+    const ok = result.ok > 0 && result.failed === 0;
 
     return NextResponse.json({
       ok: true,
       wa_status: ok ? "sent" : "failed",
-      wa_error: ok ? null : ((result as any).failures?.[0] ?? "invio fallito"),
+      wa_error: ok ? null : (result.failures[0] ?? "invio fallito"),
       pdfPublicUrl,
     });
   } catch (e: any) {

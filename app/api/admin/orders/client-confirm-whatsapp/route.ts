@@ -15,15 +15,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "orderIds (array) e phone sono richiesti" }, { status: 400 });
     }
 
-    const ownerPhone = process.env.OWNER_PHONE || "";
-    if (!ownerPhone) {
-      return NextResponse.json({ error: "OWNER_PHONE non configurato" }, { status: 500 });
-    }
-
     const appBaseUrl = process.env.APP_BASE_URL || new URL(req.url).origin;
     const authHeader = req.headers.get("Authorization") || req.headers.get("authorization") || "";
+    const ownerPhone = process.env.OWNER_PHONE || "";
 
-    // 1) Genera PDF di conferma in formato cliente
+    // 1) Genera PDF di conferma cliente e caricalo su Supabase
     const qs = (orderIds as string[]).map((id) => `orderIds=${encodeURIComponent(id)}`).join("&");
     let pdfPublicUrl: string | null = null;
 
@@ -51,27 +47,25 @@ export async function POST(req: Request) {
       // Continua senza PDF
     }
 
-    // 2) Messaggio di conferma ordine (formato cliente)
-    //    NB: Twilio sandbox invia SOLO al numero master verificato.
-    //    Quando Twilio sarà approvato per produzione, aggiungere `phone` all'array toPhones.
+    // 2) Messaggio di conferma ordine
     const bodyText =
-      `✅ CONFERMA ORDINE\n` +
+      `✅ Conferma ordine\n` +
       `Cliente: ${name}\n` +
       `Tel: ${phone}`;
 
-    // Invia al numero master (Twilio sandbox: clienti non verificati vengono bloccati)
+    // 3) Invia al numero master (sandbox Twilio: solo numero verificato)
     const result = await sendWhatsAppOrder({
       toPhones: [ownerPhone],
       body: bodyText,
       mediaUrl: pdfPublicUrl,
     });
 
-    const ok = (result.ok ?? 0) > 0 && (result.failed ?? 0) === 0;
+    const ok = result.ok > 0 && result.failed === 0;
 
     return NextResponse.json({
       ok: true,
       wa_status: ok ? "sent" : "failed",
-      wa_error: ok ? null : ((result as any).failures?.[0] ?? "invio fallito"),
+      wa_error: ok ? null : (result.failures[0] ?? "invio fallito"),
       pdfPublicUrl,
     });
   } catch (e: any) {
