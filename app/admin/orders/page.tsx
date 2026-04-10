@@ -423,6 +423,10 @@ export default function AdminOrdersPage() {
   // Apre WhatsApp direttamente con messaggio formattato + link PDF (no Twilio)
   async function openWaClienteLink(group: ClientGroup) {
     setClientWaLinkLoading(group.key);
+
+    // Apre la finestra SUBITO (sincrono) — Safari iOS blocca window.open dopo await
+    const waWindow = window.open("", "_blank");
+
     try {
       // 1) Genera e carica il PDF su Supabase, ottieni URL pubblico
       const res = await adminFetch("/api/admin/orders/client-confirm-pdf-url", {
@@ -431,52 +435,51 @@ export default function AdminOrdersPage() {
         body: JSON.stringify({ orderIds: group.orderIds, phone: group.phone, name: group.name }),
       });
       const j = await res.json();
-      if (!res.ok) { alert(j.error || "Errore generazione PDF"); return; }
+      if (!res.ok) {
+        if (waWindow) waWindow.close();
+        alert(j.error || "Errore generazione PDF");
+        return;
+      }
 
       const pdfUrl: string = j.pdfPublicUrl;
 
-      // 2) Costruisce messaggio con formattazione WhatsApp (*grassetto*, _corsivo_)
+      // 2) Costruisce messaggio — solo emoji semplici, nessun carattere speciale
       const items = getClientItems(group);
       const prodotti = items.filter((i) => i.products !== null);
 
-      // Lista casse + calcolo totale
-      let total = 0;
       const righe: string[] = [];
       for (const it of prodotti) {
         const p = it.products!;
         const price = p.price_eur !== null ? Number(p.price_eur) : null;
-        if (price !== null) total += price * it.qty;
-        const priceStr = price !== null ? `€ ${price.toFixed(2)}` : "—";
-        const qtyStr = it.qty > 1 ? ` ×${it.qty}` : "";
+        const priceStr = price !== null ? `EUR ${price.toFixed(2)}` : "";
+        const qtyStr = it.qty > 1 ? ` x${it.qty}` : "";
         const descrizione = p.specie
           ? p.specie.charAt(0).toUpperCase() + p.specie.slice(1).toLowerCase()
           : `Cassa ${p.box_number}`;
-        righe.push(`  • ${descrizione}${qtyStr}  —  ${priceStr}`);
+        righe.push(`- ${descrizione}${qtyStr}${priceStr ? `  ${priceStr}` : ""}`);
       }
-
-      const totaleRiga = "";
 
       const nomeCliente = group.company
         ? `${group.name} (${group.company})`
         : group.name;
 
       const message =
-        `🐟 *F.lli D'Andrassi srl*\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `*F.lli D'Andrassi srl*\n\n` +
         `Gentile *${nomeCliente}*,\n` +
-        `il tuo ordine è stato confermato ✅\n\n` +
-        `📦 *Casse ordinate:*\n` +
-        `${righe.join("\n")}` +
-        `${totaleRiga}\n\n` +
-        `📄 *Riepilogo dettagliato:*\n` +
+        `il tuo ordine e' stato confermato.\n\n` +
+        `*Prodotti ordinati:*\n` +
+        `${righe.join("\n")}\n\n` +
+        `Riepilogo completo:\n` +
         `${pdfUrl}\n\n` +
         `_Grazie e a presto!_\n` +
         `_F.lli D'Andrassi_`;
 
-      // 3) Apre WhatsApp con numero e messaggio già pronti
+      // 3) Indirizza la finestra già aperta verso WhatsApp
       const phone = group.phone.replace(/\D/g, "");
-      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank");
+      const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+      if (waWindow) waWindow.location.href = waUrl;
     } catch (e: any) {
+      if (waWindow) waWindow.close();
       alert(e?.message ?? "Errore rete");
     } finally {
       setClientWaLinkLoading(null);
