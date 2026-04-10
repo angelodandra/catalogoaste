@@ -51,16 +51,18 @@ export async function POST(req: Request) {
       // Continua senza PDF
     }
 
-    // 2) Messaggio per il cliente (tono diverso rispetto al WA interno)
+    // 2) Messaggio di conferma ordine (formato cliente)
+    //    NB: Twilio sandbox invia SOLO al numero master verificato.
+    //    Quando Twilio sarà approvato per produzione, aggiungere `phone` all'array toPhones.
     const bodyText =
       `✅ CONFERMA ORDINE\n` +
-      `Gentile ${name},\n` +
-      `il tuo ordine è stato confermato.\n` +
+      `Cliente: ${name}\n` +
+      `Tel: ${phone}\n` +
       (pdfPublicUrl ? `📄 Riepilogo: ${pdfPublicUrl}` : `Riepilogo: non disponibile`);
 
-    // 3) Invia WA SOLO al cliente (non al titolare — è una conferma per lui)
+    // Invia al numero master (Twilio sandbox: clienti non verificati vengono bloccati)
     const result = await sendWhatsAppOrder({
-      toPhones: [phone],
+      toPhones: [ownerPhone],
       body: bodyText,
       mediaUrl: pdfPublicUrl,
     });

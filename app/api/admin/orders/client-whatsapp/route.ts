@@ -61,9 +61,11 @@ export async function POST(req: Request) {
       `Ordini: ${orderIds.length}\n` +
       (pdfPublicUrl ? `📄 PDF: ${pdfPublicUrl}` : `PDF: non disponibile`);
 
-    // 3) Invia WA al cliente e al titolare
+    // 3) Invia WA al numero master
+    //    NB: Twilio sandbox invia SOLO al numero master verificato.
+    //    In produzione aggiungere `phone` all'array per mandarlo anche al cliente.
     const result = await sendWhatsAppOrder({
-      toPhones: [phone, ownerPhone],
+      toPhones: [ownerPhone],
       body: bodyText,
       mediaUrl: pdfPublicUrl,
     });

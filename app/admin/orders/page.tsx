@@ -153,7 +153,7 @@ export default function AdminOrdersPage() {
     try {
       const { data, error } = await supabaseBrowser()
         .from("order_items")
-        .select("qty, products(id, progressive_number, box_number, image_path, is_sold, price_eur)")
+        .select("order_id, qty, products(id, progressive_number, box_number, image_path, is_sold, price_eur)")
         .eq("order_id", orderId);
       if (error) { alert(error.message); return; }
       setItemsByOrder((prev) => ({ ...prev, [orderId]: (data || []) as any }));
@@ -829,6 +829,8 @@ export default function AdminOrdersPage() {
                       const p = it.products;
                       if (!p) return null;
                       const imgUrl = `${base}/storage/v1/object/public/catalog-images/${p.image_path}`;
+                      // order_id è disponibile se caricato via loadAllItemsBulk o loadItems aggiornato
+                      const itemOrderId = (it as any).order_id as string | undefined;
                       return (
                         <div key={p.id + ":" + idx} className="rounded-2xl border bg-gray-50 p-3">
                           <div className="relative">
@@ -846,6 +848,18 @@ export default function AdminOrdersPage() {
                             )}
                           </div>
                           <div className="mt-2 text-xs text-gray-600">Q.tà: {it.qty}</div>
+                          {itemOrderId && (
+                            <div className="mt-2">
+                              <button
+                                type="button"
+                                className="w-full rounded-lg bg-black px-3 py-2 text-xs font-bold text-white disabled:opacity-60 cursor-pointer"
+                                disabled={loading}
+                                onClick={() => removeFromOrder(itemOrderId, p.id)}
+                              >
+                                Rimuovi dall'ordine
+                              </button>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
