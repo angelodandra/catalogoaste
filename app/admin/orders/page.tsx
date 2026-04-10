@@ -454,7 +454,7 @@ export default function AdminOrdersPage() {
         righe.push(`  • ${descrizione}${qtyStr}  —  ${priceStr}`);
       }
 
-      const totaleRiga = total > 0 ? `\n💰 *Totale: € ${total.toFixed(2)}*` : "";
+      const totaleRiga = "";
 
       const nomeCliente = group.company
         ? `${group.name} (${group.company})`
