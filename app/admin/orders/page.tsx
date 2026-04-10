@@ -64,6 +64,7 @@ export default function AdminOrdersPage() {
   const [clientWaLoading, setClientWaLoading] = useState<string | null>(null);
   const [clientConfirmWaLoading, setClientConfirmWaLoading] = useState<string | null>(null);
   const [clientPdfLoading, setClientPdfLoading] = useState<string | null>(null);
+  const [clientWaLinkLoading, setClientWaLinkLoading] = useState<string | null>(null);
 
   // Traccia quali ordini/clienti hanno le casse espanse esplicitamente
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
@@ -415,6 +416,66 @@ export default function AdminOrdersPage() {
       alert(e?.message ?? "Errore rete");
     } finally {
       setClientConfirmWaLoading(null);
+    }
+  }
+
+  // Apre WhatsApp direttamente con messaggio formattato + link PDF (no Twilio)
+  async function openWaClienteLink(group: ClientGroup) {
+    setClientWaLinkLoading(group.key);
+    try {
+      // 1) Genera e carica il PDF su Supabase, ottieni URL pubblico
+      const res = await adminFetch("/api/admin/orders/client-confirm-pdf-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderIds: group.orderIds, phone: group.phone, name: group.name }),
+      });
+      const j = await res.json();
+      if (!res.ok) { alert(j.error || "Errore generazione PDF"); return; }
+
+      const pdfUrl: string = j.pdfPublicUrl;
+
+      // 2) Costruisce messaggio con formattazione WhatsApp (*grassetto*, _corsivo_)
+      const items = getClientItems(group);
+      const prodotti = items.filter((i) => i.products !== null);
+
+      // Lista casse + calcolo totale
+      let total = 0;
+      const righe: string[] = [];
+      for (const it of prodotti) {
+        const p = it.products!;
+        const price = p.price_eur !== null ? Number(p.price_eur) : null;
+        if (price !== null) total += price * it.qty;
+        const priceStr = price !== null ? `€ ${price.toFixed(2)}` : "—";
+        const qtyStr = it.qty > 1 ? ` ×${it.qty}` : "";
+        righe.push(`  • Cassa ${p.box_number}${qtyStr}  —  ${priceStr}`);
+      }
+
+      const totaleRiga = total > 0 ? `\n💰 *Totale: € ${total.toFixed(2)}*` : "";
+
+      const nomeCliente = group.company
+        ? `${group.name} (${group.company})`
+        : group.name;
+
+      const message =
+        `🐟 *F.lli D'Andrassi srl*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `Gentile *${nomeCliente}*,\n` +
+        `il tuo ordine è stato confermato ✅\n\n` +
+        `📦 *Casse ordinate:*\n` +
+        `${righe.join("\n")}` +
+        `${totaleRiga}\n\n` +
+        `📄 *Riepilogo dettagliato:*\n` +
+        `${pdfUrl}\n\n` +
+        `_Grazie e a presto!_\n` +
+        `_F.lli D'Andrassi_`;
+
+      // 3) Apre WhatsApp con numero e messaggio già pronti
+      const phone = group.phone.replace(/\D/g, "");
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank");
+    } catch (e: any) {
+      alert(e?.message ?? "Errore rete");
+    } finally {
+      setClientWaLinkLoading(null);
     }
   }
 
@@ -871,9 +932,19 @@ export default function AdminOrdersPage() {
                       className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-800 disabled:opacity-60 cursor-pointer"
                       disabled={clientConfirmWaLoading === group.key || loading}
                       onClick={() => sendClientConfirmWhatsApp(group)}
-                      title="Invia al cliente la conferma ordine (peso esterno, prezzo, provenienza)"
+                      title="Invia via Twilio (numero master)"
                     >
-                      {clientConfirmWaLoading === group.key ? "⏳ Invio…" : "📲 WA cliente"}
+                      {clientConfirmWaLoading === group.key ? "⏳ Invio…" : "📲 WA cliente (Twilio)"}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="rounded-lg bg-green-500 px-3 py-2 text-sm font-bold text-white disabled:opacity-60 cursor-pointer hover:bg-green-600"
+                      disabled={clientWaLinkLoading === group.key || loading}
+                      onClick={() => openWaClienteLink(group)}
+                      title="Apre WhatsApp con messaggio e PDF già pronti — premi solo Invia"
+                    >
+                      {clientWaLinkLoading === group.key ? "⏳ Preparando…" : "💬 WhatsApp diretto"}
                     </button>
 
                     <button
