@@ -62,6 +62,7 @@ export default function AdminOrdersPage() {
   const [viewMode, setViewMode] = useState<"orders" | "clients">("orders");
   const [allItemsLoaded, setAllItemsLoaded] = useState(false);
   const [clientWaLoading, setClientWaLoading] = useState<string | null>(null);
+  const [clientConfirmWaLoading, setClientConfirmWaLoading] = useState<string | null>(null);
   const [clientPdfLoading, setClientPdfLoading] = useState<string | null>(null);
 
   // Traccia quali ordini/clienti hanno le casse espanse esplicitamente
@@ -347,6 +348,26 @@ export default function AdminOrdersPage() {
       alert(e?.message ?? "Errore rete");
     } finally {
       setClientWaLoading(null);
+    }
+  }
+
+  // Invia al cliente la CONFERMA ORDINE (formato cliente: peso esterno, senza dati interni)
+  async function sendClientConfirmWhatsApp(group: ClientGroup) {
+    if (!confirm(`Invia conferma ordine a ${group.name} (${group.phone})?\nIl cliente riceverà il riepilogo con peso, prezzo e provenienza.`)) return;
+    setClientConfirmWaLoading(group.key);
+    try {
+      const res = await adminFetch("/api/admin/orders/client-confirm-whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderIds: group.orderIds, phone: group.phone, name: group.name }),
+      });
+      const j = await res.json();
+      if (!res.ok) { alert(j.error || "Errore invio WhatsApp"); return; }
+      alert(j.wa_status === "sent" ? "Conferma inviata al cliente ✅" : `Invio fallito: ${j.wa_error}`);
+    } catch (e: any) {
+      alert(e?.message ?? "Errore rete");
+    } finally {
+      setClientConfirmWaLoading(null);
     }
   }
 
@@ -775,8 +796,19 @@ export default function AdminOrdersPage() {
                       className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-bold text-green-800 disabled:opacity-60 cursor-pointer"
                       disabled={isWaLoading || loading}
                       onClick={() => sendClientWhatsApp(group)}
+                      title="Invia al titolare il PDF di preparazione (uso interno)"
                     >
-                      {isWaLoading ? "⏳ Invio…" : "📲 WhatsApp"}
+                      {isWaLoading ? "⏳ Invio…" : "📲 WA interno"}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-800 disabled:opacity-60 cursor-pointer"
+                      disabled={clientConfirmWaLoading === group.key || loading}
+                      onClick={() => sendClientConfirmWhatsApp(group)}
+                      title="Invia al cliente la conferma ordine (peso esterno, prezzo, provenienza)"
+                    >
+                      {clientConfirmWaLoading === group.key ? "⏳ Invio…" : "📲 WA cliente"}
                     </button>
 
                     <button
