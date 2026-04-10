@@ -64,6 +64,10 @@ export default function AdminOrdersPage() {
   const [clientWaLoading, setClientWaLoading] = useState<string | null>(null);
   const [clientPdfLoading, setClientPdfLoading] = useState<string | null>(null);
 
+  // Traccia quali ordini/clienti hanno le casse espanse esplicitamente
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
+
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
   // ─── Gruppi per cliente ───────────────────────────────────────────────────
@@ -112,6 +116,9 @@ export default function AdminOrdersPage() {
       if (error) { setMsg("Errore caricando ordini: " + error.message); return; }
 
       setOrders((data || []) as any);
+      // Reset espansi quando si aggiornano gli ordini
+      setExpandedOrders(new Set());
+      setExpandedClients(new Set());
 
       try {
         const phones = Array.from(new Set((data || []).map((o: any) => String(o.customer_phone || "").trim()).filter(Boolean)));
@@ -149,6 +156,8 @@ export default function AdminOrdersPage() {
         .eq("order_id", orderId);
       if (error) { alert(error.message); return; }
       setItemsByOrder((prev) => ({ ...prev, [orderId]: (data || []) as any }));
+      // Segna l'ordine come espanso esplicitamente
+      setExpandedOrders((prev) => new Set([...prev, orderId]));
     } finally {
       setLoading(false);
     }
@@ -648,7 +657,7 @@ export default function AdminOrdersPage() {
                 </div>
               </div>
 
-              {(itemsByOrder[o.id] || []).length > 0 && (
+              {expandedOrders.has(o.id) && (itemsByOrder[o.id] || []).length > 0 && (
                 <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {(itemsByOrder[o.id] || []).map((it, idx) => {
                     const p = it.products;
@@ -726,7 +735,7 @@ export default function AdminOrdersPage() {
 
                   {/* Azioni per cliente */}
                   <div className="flex flex-wrap gap-2">
-                    {!allItemsLoaded && (
+                      {!allItemsLoaded ? (
                       <button
                         type="button"
                         className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold disabled:opacity-60 cursor-pointer"
@@ -734,6 +743,21 @@ export default function AdminOrdersPage() {
                         onClick={loadAllItemsBulk}
                       >
                         Carica casse
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold cursor-pointer hover:bg-gray-50"
+                        onClick={() =>
+                          setExpandedClients((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(group.key)) next.delete(group.key);
+                            else next.add(group.key);
+                            return next;
+                          })
+                        }
+                      >
+                        {expandedClients.has(group.key) ? "Nascondi casse" : "Mostra casse"}
                       </button>
                     )}
 
@@ -766,8 +790,8 @@ export default function AdminOrdersPage() {
                   </div>
                 </div>
 
-                {/* Griglia casse del cliente */}
-                {allItemsLoaded && items.length > 0 && (
+                {/* Griglia casse del cliente — visibile solo se espanso */}
+                {allItemsLoaded && expandedClients.has(group.key) && items.length > 0 && (
                   <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {items.map((it, idx) => {
                       const p = it.products;
@@ -796,8 +820,8 @@ export default function AdminOrdersPage() {
                   </div>
                 )}
 
-                {allItemsLoaded && items.length === 0 && (
-                  <div className="mt-3 text-xs text-gray-400 italic">Nessuna cassa caricata per questo cliente.</div>
+                {allItemsLoaded && expandedClients.has(group.key) && items.length === 0 && (
+                  <div className="mt-3 text-xs text-gray-400 italic">Nessuna cassa per questo cliente.</div>
                 )}
               </div>
             );
