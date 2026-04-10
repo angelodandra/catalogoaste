@@ -58,8 +58,7 @@ export async function POST(req: Request) {
       `🧾 RIEPILOGO ORDINI\n` +
       `Cliente: ${name}\n` +
       `Tel: ${phone}\n` +
-      `Ordini: ${orderIds.length}\n` +
-      (pdfPublicUrl ? `📄 PDF: ${pdfPublicUrl}` : `PDF: non disponibile`);
+      `Ordini: ${orderIds.length}`;
 
     // 3) Invia WA al numero master
     //    NB: Twilio sandbox invia SOLO al numero master verificato.

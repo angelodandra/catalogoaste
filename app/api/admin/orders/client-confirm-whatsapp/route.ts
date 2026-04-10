@@ -57,8 +57,7 @@ export async function POST(req: Request) {
     const bodyText =
       `✅ CONFERMA ORDINE\n` +
       `Cliente: ${name}\n` +
-      `Tel: ${phone}\n` +
-      (pdfPublicUrl ? `📄 Riepilogo: ${pdfPublicUrl}` : `Riepilogo: non disponibile`);
+      `Tel: ${phone}`;
 
     // Invia al numero master (Twilio sandbox: clienti non verificati vengono bloccati)
     const result = await sendWhatsAppOrder({
