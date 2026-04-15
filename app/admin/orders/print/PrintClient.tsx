@@ -52,6 +52,10 @@ export default function OrdersPrintPage() {
   const mode = (sp.get("mode") || "all").toLowerCase();
   const from = (sp.get("from") || "").trim();
   const to = (sp.get("to") || "").trim();
+  // Filtri per stampa singola
+  const singleOrderId = (sp.get("orderId") || "").trim();
+  const singlePhone = (sp.get("phone") || "").trim();
+  const singleName = (sp.get("name") || "").trim();
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -71,7 +75,13 @@ export default function OrdersPrintPage() {
           .order("created_at", { ascending: true })
           .limit(500);
 
-        if (from && to) {
+        if (singleOrderId) {
+          // stampa singolo ordine
+          q = q.eq("id", singleOrderId);
+        } else if (singlePhone) {
+          // stampa singolo cliente
+          q = q.eq("customer_phone", singlePhone);
+        } else if (from && to) {
           q = q.gte("created_at", `${from}T00:00:00Z`).lte("created_at", `${to}T23:59:59Z`);
         }
 
@@ -373,11 +383,13 @@ export default function OrdersPrintPage() {
   }, [orders, items, customerByPhone]);
 
   const title = useMemo(() => {
+    if (singleOrderId) return `Ordine — preparazione`;
+    if (singlePhone) return `Ordine ${singleName || singlePhone}`;
     const range = from && to ? `(${from} → ${to})` : "(tutti)";
     if (type === "byproduct") return `Stampa per prodotti ${range}`;
     if (type === "bycatalog") return `Stampa per catalogo ${range}`;
     return `Stampa ordini per cliente ${range}`;
-  }, [type, from, to]);
+  }, [type, from, to, singleOrderId, singlePhone, singleName]);
 
   if (loading) {
     return (

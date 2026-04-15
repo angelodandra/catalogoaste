@@ -11,8 +11,11 @@ export function middleware(req: NextRequest) {
   const { nextUrl } = req;
   const host = req.headers.get("host") || "";
 
-  // Forza dominio canonico SOLO per /admin (e sottopagine)
-  if (nextUrl.pathname.startsWith("/admin") && host !== CANONICAL_HOST) {
+  // Forza dominio canonico per /admin e /operatore (e sottopagine)
+  if (
+    (nextUrl.pathname.startsWith("/admin") || nextUrl.pathname.startsWith("/operatore")) &&
+    host !== CANONICAL_HOST
+  ) {
     const url = nextUrl.clone();
     url.host = CANONICAL_HOST;
     url.protocol = "https:";
@@ -23,5 +26,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: ["/admin/:path*", "/operatore/:path*"],
 };
