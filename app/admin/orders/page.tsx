@@ -76,10 +76,23 @@ export default function AdminOrdersPage() {
 
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
+  // ─── Ordini filtrati per intervallo date (se impostate) ──────────────────
+  // Se l'utente seleziona Da/A in "Pulizia ordini", gli ordini fuori dal range
+  // vengono esclusi anche dalla vista e dalle stampe per cliente.
+  const ordersInRange = useMemo(() => {
+    if (!fromDate || !toDate) return orders;
+    const fromTs = new Date(`${fromDate}T00:00:00`).getTime();
+    const toTs = new Date(`${toDate}T23:59:59.999`).getTime();
+    return orders.filter((o) => {
+      const t = new Date(o.created_at).getTime();
+      return t >= fromTs && t <= toTs;
+    });
+  }, [orders, fromDate, toDate]);
+
   // ─── Gruppi per cliente ───────────────────────────────────────────────────
   const clientGroups = useMemo<ClientGroup[]>(() => {
     const map: Record<string, ClientGroup> = {};
-    for (const o of orders) {
+    for (const o of ordersInRange) {
       const phone = String(o.customer_phone || "").trim();
       const name = String(o.customer_name || "").trim();
       const key = `${phone}__${name}`;
@@ -98,13 +111,13 @@ export default function AdminOrdersPage() {
       }
     }
     return Object.values(map).sort((a, b) => b.latestAt.localeCompare(a.latestAt));
-  }, [orders, customerByPhone]);
+  }, [ordersInRange, customerByPhone]);
 
   // ─── Liste filtrate per ricerca ───────────────────────────────────────────
   const filteredOrders = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return orders;
-    return orders.filter((o) => {
+    if (!q) return ordersInRange;
+    return ordersInRange.filter((o) => {
       const company = customerByPhone[o.customer_phone]?.company ?? "";
       return (
         o.customer_name.toLowerCase().includes(q) ||
@@ -112,7 +125,7 @@ export default function AdminOrdersPage() {
         (company as string).toLowerCase().includes(q)
       );
     });
-  }, [orders, searchQuery, customerByPhone]);
+  }, [ordersInRange, searchQuery, customerByPhone]);
 
   const filteredClientGroups = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -370,7 +383,12 @@ export default function AdminOrdersPage() {
   async function printClientPrep(group: ClientGroup) {
     setClientPdfLoading(group.key);
     try {
-      const qs = group.orderIds.map((id) => `orderIds=${encodeURIComponent(id)}`).join("&");
+      const parts = group.orderIds.map((id) => `orderIds=${encodeURIComponent(id)}`);
+      if (fromDate && toDate) {
+        parts.push(`from=${encodeURIComponent(fromDate)}`);
+        parts.push(`to=${encodeURIComponent(toDate)}`);
+      }
+      const qs = parts.join("&");
       const res = await adminFetch(`/api/admin/orders/prep-pdf-bulk?${qs}`);
       if (!res.ok) { alert("Errore generazione PDF"); return; }
       const blob = await res.blob();

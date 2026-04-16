@@ -56,7 +56,8 @@ export async function GET(req: Request) {
 
     if (orderIdsParam.length > 0) {
       q = q.in("id", orderIdsParam);
-    } else if (from && to) {
+    }
+    if (from && to) {
       q = q.gte("created_at", `${from}T00:00:00Z`).lte("created_at", `${to}T23:59:59Z`);
     }
 
