@@ -458,7 +458,7 @@ export default function OrdersPrintPage() {
             <div key={cat.label} className="rounded-2xl border bg-white p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2 border-b pb-2">
                 <div className="text-lg font-bold">{cat.label}</div>
-                <div className="text-sm font-semibold text-gray-700">Totale: € {Number(cat.tot).toFixed(2)}</div>
+                <div className="text-sm text-gray-500">{cat.boxes.length} {cat.boxes.length === 1 ? "cassa" : "casse"}</div>
               </div>
               <div className="mt-3 grid gap-3">
                 {cat.boxes.map((b, idx) => (
@@ -539,7 +539,6 @@ export default function OrdersPrintPage() {
                 ))}
               </div>
 
-              <div className="mt-3 text-right font-bold">Totale: € {Number(g.tot).toFixed(2)}</div>
             </div>
           ))}
 

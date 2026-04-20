@@ -38,6 +38,36 @@ function eur(n: number | null | undefined) {
   return `€ ${v.toFixed(2)}`;
 }
 
+// Estrae YYYY-MM-DD da un timestamp ISO (in fuso locale italiano)
+function dayKey(iso: string) {
+  try {
+    const d = new Date(iso);
+    // Usa toLocaleDateString IT con anno-mese-giorno per ordinamento alfabetico = cronologico
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  } catch {
+    return iso?.slice(0, 10) || "";
+  }
+}
+
+function dayLabel(key: string) {
+  // "2026-04-20" → "Lunedì 20 aprile 2026"
+  if (!key) return "";
+  try {
+    const d = new Date(`${key}T12:00:00`);
+    return d.toLocaleDateString("it-IT", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+  } catch {
+    return key;
+  }
+}
+
 export async function GET(req: Request) {
   try {
     await requireAdmin(req);
@@ -109,6 +139,7 @@ export async function GET(req: Request) {
     const right = doc.page.margins.right;
     const usableW = pageW - left - right;
 
+    // ── Helper di rendering ────────────────────────────────────────────────
     const drawTop = async (title: string, subtitle: string) => {
       const startY = 24;
       try {
@@ -128,83 +159,90 @@ export async function GET(req: Request) {
       doc.moveDown(0.8);
     };
 
-    const drawOrderBlock = async (order: any, rows: any[]) => {
-      const phone = safeStr(order.customer_phone).trim();
-      const company = companyByPhone[phone] || "";
-      const customerLine = `${safeStr(order.customer_name).trim()}${company ? ` (${company})` : ""}`;
-
-      doc.font("Helvetica-Bold").fontSize(13).text(customerLine);
-      doc.font("Helvetica").fontSize(10).fillColor("gray").text(`Creato il: ${new Date(order.created_at).toLocaleString("it-IT")}`);
+    const drawCustomerHeader = (customerName: string, company: string, dateRangeLabel: string) => {
+      const customerLine = `${customerName}${company ? ` (${company})` : ""}`;
+      doc.font("Helvetica-Bold").fontSize(14).fillColor("black")
+        .text(customerLine, left, doc.y, { width: usableW, lineBreak: false });
+      doc.font("Helvetica").fontSize(9).fillColor("gray")
+        .text(dateRangeLabel, left, doc.y + 2, { width: usableW, lineBreak: false });
       doc.fillColor("black");
-      doc.moveDown(0.4);
+      // riga sotto
+      const ySep = doc.y + 6;
+      doc.strokeColor("#000000").lineWidth(1.5);
+      doc.moveTo(left, ySep).lineTo(left + usableW, ySep).stroke();
+      doc.strokeColor("#000000").lineWidth(1);
+      doc.y = ySep + 8;
+    };
 
+    const drawDaySubheader = (dayStr: string, count: number) => {
+      const boxH = 22;
+      // Verifica spazio: se non ce n'è, vai a nuova pagina
+      if (doc.y + boxH + 8 > doc.page.height - doc.page.margins.bottom - 20) {
+        doc.addPage();
+      }
+      // Pillola colorata con la data (senza emoji — Helvetica di pdfkit non le supporta)
+      const text = `${dayLabel(dayStr).toUpperCase()}  ·  ${count} ${count === 1 ? "cassa" : "casse"}`;
+      const yBox = doc.y;
+      doc.rect(left, yBox, usableW, boxH).fillAndStroke("#f3f4f6", "#d1d5db");
+      doc.fillColor("#111827").font("Helvetica-Bold").fontSize(10)
+        .text(text, left + 10, yBox + 6, { width: usableW - 20, lineBreak: false });
+      doc.fillColor("black").font("Helvetica");
+      doc.y = yBox + boxH + 6;
+    };
+
+    const drawRow = async (r: any) => {
       const lineH = 86;
       const thumb = 70;
       const checkboxSize = 14;
 
-      let total = 0;
-
-      for (const r of rows) {
-        if (doc.y + lineH > doc.page.height - doc.page.margins.bottom - 20) {
-          doc.addPage();
-        }
-
-        const y = doc.y;
-
-        doc.rect(left, y + 6, checkboxSize, checkboxSize).strokeColor("#000000").stroke();
-
-        const imgX = left + 26;
-        const imgY = y;
-        const imgUrl = r.image_path ? `${base}/storage/v1/object/public/catalog-images/${r.image_path}` : "";
-
-        if (imgUrl) {
-          try {
-            const imgBuf = await fetchAsBuffer(imgUrl);
-            doc.image(imgBuf, imgX, imgY, { width: thumb, height: thumb, fit: [thumb, thumb] });
-          } catch {
-            doc.fontSize(9).fillColor("gray").text("foton/d", imgX + 18, imgY + 25, { align: "center" });
-            doc.fillColor("black");
-          }
-        } else {
-          doc.fontSize(9).fillColor("gray").text("fotomancante", imgX + 10, imgY + 25, { align: "center" });
-          doc.fillColor("black");
-        }
-
-        const xText = imgX + thumb + 14;
-
-        const numCoopLabelBulk = r.numero_interno_cassa != null ? `   N° coop: ${r.numero_interno_cassa}` : "";
-        const titleLineBulk = `Cassa ${r.box}${numCoopLabelBulk}${r.specie ? `   ${r.specie.toUpperCase()}` : ""}`;
-        doc.font("Helvetica-Bold").fontSize(14).text(titleLineBulk, xText, y + 6);
-
-        doc.font("Helvetica").fontSize(10).fillColor("gray");
-        doc.text(
-          `Qtà: ${r.qty}${r.internal_weight !== null && r.internal_weight !== undefined ? `   |   Peso int: ${Number(r.internal_weight).toFixed(2)} kg` : ""}${r.weight_kg !== null && r.weight_kg !== undefined ? `   |   Peso: ≈ ${Number(r.weight_kg).toFixed(2)} kg` : ""}${r.prov ? `   |   ${r.prov}` : ""}`,
-          xText,
-          y + 30
-        );
-        doc.text(`Prezzo: ${eur(r.price)}`, xText, y + 46);
-        doc.fillColor("black");
-
-        doc.strokeColor("#e5e5e5").lineWidth(1);
-        doc.moveTo(left, y + lineH).lineTo(left + usableW, y + lineH).stroke();
-        doc.strokeColor("#000000").lineWidth(1);
-
-        doc.y = y + lineH + 6;
+      if (doc.y + lineH > doc.page.height - doc.page.margins.bottom - 20) {
+        doc.addPage();
       }
 
-      doc.moveDown(0.2);
+      const y = doc.y;
 
+      doc.rect(left, y + 6, checkboxSize, checkboxSize).strokeColor("#000000").stroke();
 
-      doc.strokeColor("#cccccc").lineWidth(1);
-      doc.moveTo(left, doc.y).lineTo(left + usableW, doc.y).stroke();
+      const imgX = left + 26;
+      const imgY = y;
+      const imgUrl = r.image_path ? `${base}/storage/v1/object/public/catalog-images/${r.image_path}` : "";
+
+      if (imgUrl) {
+        try {
+          const imgBuf = await fetchAsBuffer(imgUrl);
+          doc.image(imgBuf, imgX, imgY, { width: thumb, height: thumb, fit: [thumb, thumb] });
+        } catch {
+          doc.fontSize(9).fillColor("gray").text("foto n/d", imgX + 18, imgY + 25, { align: "center" });
+          doc.fillColor("black");
+        }
+      } else {
+        doc.fontSize(9).fillColor("gray").text("foto mancante", imgX + 10, imgY + 25, { align: "center" });
+        doc.fillColor("black");
+      }
+
+      const xText = imgX + thumb + 14;
+
+      const numCoopLabelBulk = r.numero_interno_cassa != null ? `   N° coop: ${r.numero_interno_cassa}` : "";
+      const titleLineBulk = `Cassa ${r.box}${numCoopLabelBulk}${r.specie ? `   ${r.specie.toUpperCase()}` : ""}`;
+      doc.font("Helvetica-Bold").fontSize(14).text(titleLineBulk, xText, y + 6);
+
+      doc.font("Helvetica").fontSize(10).fillColor("gray");
+      doc.text(
+        `Qtà: ${r.qty}${r.internal_weight !== null && r.internal_weight !== undefined ? `   |   Peso int: ${Number(r.internal_weight).toFixed(2)} kg` : ""}${r.weight_kg !== null && r.weight_kg !== undefined ? `   |   Peso: ≈ ${Number(r.weight_kg).toFixed(2)} kg` : ""}${r.prov ? `   |   ${r.prov}` : ""}`,
+        xText,
+        y + 30
+      );
+      doc.text(`Prezzo: ${eur(r.price)}`, xText, y + 46);
+      doc.fillColor("black");
+
+      doc.strokeColor("#e5e5e5").lineWidth(1);
+      doc.moveTo(left, y + lineH).lineTo(left + usableW, y + lineH).stroke();
       doc.strokeColor("#000000").lineWidth(1);
-      doc.moveDown(0.8);
+
+      doc.y = y + lineH + 6;
     };
 
-    
-    // ====== Raggruppa per CLIENTE (telefono) e unisce tutte le casse ======
-    
-    // ====== Raggruppa per CLIENTE (telefono) e unisce tutte le casse ======
+    // ── Costruzione dati ───────────────────────────────────────────────────
     const itemsByOrder: Record<string, any[]> = {};
     for (const it of items) {
       const orderId = safeStr(it.order_id).trim();
@@ -227,18 +265,20 @@ export async function GET(req: Request) {
       });
     }
 
-    // customerKey = nome cliente + telefono (così i venditori con lo stesso telefono restano separati)
-    const groups: Record<
-      string,
-      {
-        customer_name: string;
-        customer_phone: string;
-        company: string;
-        created_min: string;
-        created_max: string;
-        rows: any[];
-      }
-    > = {};
+    // Raggruppa per cliente, poi per giorno
+    type DayBlock = { day: string; rows: any[] };
+    type CustomerGroup = {
+      customer_name: string;
+      customer_phone: string;
+      company: string;
+      created_min: string;
+      created_max: string;
+      days: Record<string, any[]>;
+      seenProductIds: Set<string>;
+      seenBoxes: Set<string>;
+    };
+
+    const groups: Record<string, CustomerGroup> = {};
 
     for (const o of orders) {
       const phone = safeStr(o.customer_phone).trim();
@@ -248,6 +288,7 @@ export async function GET(req: Request) {
       const key = `${name}__${phone}`;
       const company = companyByPhone[phone] || "";
       const created = safeStr(o.created_at);
+      const dKey = dayKey(created);
 
       if (!groups[key]) {
         groups[key] = {
@@ -256,7 +297,9 @@ export async function GET(req: Request) {
           company,
           created_min: created,
           created_max: created,
-          rows: [],
+          days: {},
+          seenProductIds: new Set<string>(),
+          seenBoxes: new Set<string>(),
         };
       } else {
         if (!groups[key].customer_name && name) groups[key].customer_name = name;
@@ -266,57 +309,72 @@ export async function GET(req: Request) {
       }
 
       const rows = itemsByOrder[safeStr(o.id).trim()] || [];
-      groups[key].rows.push(...rows);
+
+      for (const r of rows) {
+        // Dedup per cliente: stesso prodotto in ordini diversi viene contato una volta sola
+        const pid = String(r.productId || "").trim();
+        const box = String(r.box || "").trim();
+        if (pid) {
+          if (groups[key].seenProductIds.has(pid)) continue;
+          groups[key].seenProductIds.add(pid);
+        } else if (box) {
+          if (groups[key].seenBoxes.has(box)) continue;
+          groups[key].seenBoxes.add(box);
+        }
+        if (!groups[key].days[dKey]) groups[key].days[dKey] = [];
+        groups[key].days[dKey].push(r);
+      }
     }
 
     // ordina + dedup per cliente
     const groupedArr = Object.values(groups);
 
     for (const g of groupedArr) {
-      // sort per box
-      g.rows.sort((a: any, b: any) => Number(a.box) - Number(b.box));
-
-      // dedup: prima per productId, altrimenti per box
-      const seenP = new Set<string>();
-      const seenB = new Set<string>();
-      g.rows = g.rows.filter((r: any) => {
-        const pid = String(r.productId || "").trim();
-        const box = String(r.box || "").trim();
-
-        if (pid) {
-          if (seenP.has(pid)) return false;
-          seenP.add(pid);
-          return true;
-        }
-        if (box) {
-          if (seenB.has(box)) return false;
-          seenB.add(box);
-          return true;
-        }
-        return true;
-      });
+      // sort dei giorni (chiave alfabetica YYYY-MM-DD = cronologica)
+      // sort delle righe per box dentro ogni giorno
+      for (const k of Object.keys(g.days)) {
+        g.days[k].sort((a: any, b: any) => Number(a.box) - Number(b.box));
+      }
     }
 
     // ordina clienti per nome
     groupedArr.sort((a, b) => (a.customer_name || "").localeCompare(b.customer_name || ""));
 
-const rangeLabel = from && to ? `${from} → ${to}` : "tutti";
+    const rangeLabel = from && to ? `${from} → ${to}` : "tutti";
     await drawTop("Preparazione merce (cumulativo)", `Stampa: ${nowIT()}  |  Periodo: ${rangeLabel}`);
 
-    for (const g of groupedArr) {
-      if (!g.rows.length) continue;
-      // fingo "order" solo per riusare drawOrderBlock senza stravolgere tutto
-      const fakeOrder: any = {
-        customer_name: g.customer_name,
-        customer_phone: g.customer_phone,
-        created_at: g.created_min,
-      };
-      await drawOrderBlock(fakeOrder, g.rows);
+    for (let i = 0; i < groupedArr.length; i++) {
+      const g = groupedArr[i];
+      const dayKeys = Object.keys(g.days).sort();
+      const totalRows = dayKeys.reduce((acc, dk) => acc + g.days[dk].length, 0);
+      if (!totalRows) continue;
+
+      // Header cliente
+      const dateRangeText = dayKeys.length === 1
+        ? `Giorno: ${dayLabel(dayKeys[0])}`
+        : `Periodo: ${dayLabel(dayKeys[0])} → ${dayLabel(dayKeys[dayKeys.length - 1])}  ·  ${dayKeys.length} giorni`;
+      drawCustomerHeader(g.customer_name, g.company, dateRangeText);
+
+      // Sezioni per giorno (con prezzo e pesi per prodotto, nessun totale)
+      for (const dk of dayKeys) {
+        const dayRows = g.days[dk];
+        drawDaySubheader(dk, dayRows.length);
+        for (const r of dayRows) {
+          await drawRow(r);
+        }
+      }
+
+      // Pagina nuova tra clienti (tranne ultimo)
+      if (i < groupedArr.length - 1) {
+        doc.addPage();
+      }
     }
 
     doc.font("Helvetica").fontSize(9).fillColor("gray").text(
       "Spunte: usa la casella a sinistra per segnare la cassa preparata.",
-      { align: "center" }
+      left,
+      doc.page.height - doc.page.margins.bottom - 10,
+      { width: usableW, align: "center" }
     );
     doc.fillColor("black");
 

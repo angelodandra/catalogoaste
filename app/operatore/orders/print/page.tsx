@@ -25,6 +25,30 @@ function fmtDate(iso: string) {
   } catch { return iso; }
 }
 
+// Estrae YYYY-MM-DD da un timestamp (in fuso locale)
+function dayKey(iso: string) {
+  try {
+    const d = new Date(iso);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  } catch { return iso?.slice(0, 10) || ""; }
+}
+
+function dayLabel(key: string) {
+  if (!key) return "";
+  try {
+    const d = new Date(`${key}T12:00:00`);
+    return d.toLocaleDateString("it-IT", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+  } catch { return key; }
+}
+
 type Product = {
   id: string;
   box_number: string | null;
@@ -43,8 +67,9 @@ type ClientBlock = {
   name: string;
   phone: string;
   company: string | null;
-  createdAt: string;
-  products: Product[];
+  createdMin: string; // primo ordine
+  createdMax: string; // ultimo ordine
+  days: Record<string, Product[]>; // YYYY-MM-DD → prodotti di quel giorno
 };
 
 function PrintInner() {
@@ -134,23 +159,42 @@ function PrintInner() {
           });
         }
 
-        const clientMap: Record<string, ClientBlock> = {};
+        const clientMap: Record<string, ClientBlock & { seen: Set<string> }> = {};
         for (const o of orders as any[]) {
           const phone = String(o.customer_phone || "").trim();
           const name = String(o.customer_name || "").trim() || "Cliente";
           const key = `${phone}|${name}`;
+          const dk = dayKey(o.created_at);
           if (!clientMap[key]) {
-            clientMap[key] = { phone, name, company: companyMap[phone] ?? null, createdAt: o.created_at, products: [] };
+            clientMap[key] = {
+              phone, name,
+              company: companyMap[phone] ?? null,
+              createdMin: o.created_at,
+              createdMax: o.created_at,
+              days: {},
+              seen: new Set<string>(),
+            };
+          } else {
+            if (o.created_at < clientMap[key].createdMin) clientMap[key].createdMin = o.created_at;
+            if (o.created_at > clientMap[key].createdMax) clientMap[key].createdMax = o.created_at;
           }
-          clientMap[key].products.push(...(itemsByOrder[o.id] || []));
+          const bucket = clientMap[key];
+          if (!bucket.days[dk]) bucket.days[dk] = [];
+          for (const p of (itemsByOrder[o.id] || [])) {
+            if (bucket.seen.has(p.id)) continue;
+            bucket.seen.add(p.id);
+            bucket.days[dk].push(p);
+          }
         }
 
         const result: ClientBlock[] = [];
         for (const c of Object.values(clientMap)) {
-          const seen = new Set<string>();
-          c.products = c.products.filter((p) => { if (seen.has(p.id)) return false; seen.add(p.id); return true; });
-          c.products.sort((a, b) => (a.progressive_number ?? 999) - (b.progressive_number ?? 999));
-          result.push(c);
+          // sort prodotti per progressivo dentro ogni giorno
+          for (const k of Object.keys(c.days)) {
+            c.days[k].sort((a, b) => (a.progressive_number ?? 999) - (b.progressive_number ?? 999));
+          }
+          const { seen, ...rest } = c;
+          result.push(rest);
         }
         result.sort((a, b) => a.name.localeCompare(b.name));
         setBlocks(result);
@@ -177,7 +221,10 @@ function PrintInner() {
     const clientsHtml = blocks.map((c, idx) => {
       const isLast = idx === blocks.length - 1;
 
-      const productsHtml = c.products.map((p) => {
+      const dayKeys = Object.keys(c.days).sort();
+
+      // Renderizza un singolo prodotto (mostra prezzo e pesi, nessun totale)
+      const renderProduct = (p: Product) => {
         const coop = p.numero_interno_cassa
           ? `<span style="background:#dbeafe;color:#1d4ed8;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px;">N° coop: ${p.numero_interno_cassa}</span>`
           : "";
@@ -208,15 +255,30 @@ function PrintInner() {
             </div>
             <div style="font-size:14px;font-weight:700;white-space:nowrap;flex-shrink:0;">${eur(p.price_eur)}</div>
           </div>`;
+      };
+
+      const daysHtml = dayKeys.map((dk) => {
+        const rows = c.days[dk];
+        const header = `
+          <div style="background:#f3f4f6;border:1px solid #e5e7eb;padding:6px 10px;margin:14px 0 8px 0;border-radius:6px;page-break-after:avoid;">
+            <span style="font-size:12px;font-weight:700;color:#111827;text-transform:uppercase;letter-spacing:0.03em;">${dayLabel(dk)}</span>
+            <span style="font-size:11px;color:#6b7280;margin-left:8px;">${rows.length} ${rows.length === 1 ? "cassa" : "casse"}</span>
+          </div>`;
+        return header + rows.map(renderProduct).join("");
       }).join("");
+
+      // Header cliente
+      const clientDateInfo = dayKeys.length === 1
+        ? dayLabel(dayKeys[0])
+        : `${dayLabel(dayKeys[0])} → ${dayLabel(dayKeys[dayKeys.length - 1])}  ·  ${dayKeys.length} giorni`;
 
       return `
         <div style="${isLast ? "" : "page-break-after:always;"}padding:0;">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:6px;">
             <div style="font-size:18px;font-weight:800;">${c.name}${c.company ? ` (${c.company})` : ""}</div>
-            <div style="font-size:11px;color:#666;">${fmtDate(c.createdAt)}</div>
+            <div style="font-size:11px;color:#666;">${clientDateInfo}</div>
           </div>
-          ${productsHtml}
+          ${daysHtml}
           <div style="margin-top:16px;font-size:11px;color:#aaa;text-align:center;">
             Spunte: usa la casella a sinistra per segnare la cassa preparata.
           </div>
