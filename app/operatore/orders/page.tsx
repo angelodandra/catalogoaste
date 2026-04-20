@@ -146,17 +146,31 @@ export default function OperatoreOrdersPage() {
     setLoading(true);
     setMsg("");
     try {
-      const { data, error } = await supabaseBrowser()
+      let query = supabaseBrowser()
         .from("orders")
         .select("id,catalog_id,customer_name,customer_phone,status,created_at")
-        .order("created_at", { ascending: false })
-        .limit(50);
+        .order("created_at", { ascending: false });
+
+      // Se è impostato un intervallo di date, filtra per quello (senza limit)
+      if (fromDate && toDate) {
+        query = query
+          .gte("created_at", `${fromDate}T00:00:00Z`)
+          .lte("created_at", `${toDate}T23:59:59Z`)
+          .limit(1000);
+      } else {
+        query = query.limit(50);
+      }
+
+      const { data, error } = await query;
 
       if (error) { setMsg("Errore caricando ordini: " + error.message); return; }
 
       setOrders((data || []) as any);
       setExpandedOrders(new Set());
       setExpandedClients(new Set());
+      // Reset items: vanno ricaricati per i nuovi ordini
+      setItemsByOrder({});
+      setAllItemsLoaded(false);
 
       try {
         const phones = Array.from(
@@ -185,7 +199,8 @@ export default function OperatoreOrdersPage() {
         }
       } catch { setCustomerByPhone({}); }
 
-      setMsg(`✅ ${(data || []).length} ordini caricati`);
+      const rangeMsg = fromDate && toDate ? ` (dal ${fromDate} al ${toDate})` : "";
+      setMsg(`✅ ${(data || []).length} ordini caricati${rangeMsg}`);
     } catch (e: any) {
       setMsg(e?.message ?? "Errore rete");
     } finally {
@@ -234,7 +249,16 @@ export default function OperatoreOrdersPage() {
     }
   }
 
-  useEffect(() => { loadOrders(); }, []);
+  // Carica ordini all'avvio e ricarica quando cambia l'intervallo di date
+  // (solo se entrambe settate o entrambe vuote — evita query incomplete)
+  useEffect(() => {
+    const bothSet = fromDate && toDate;
+    const bothEmpty = !fromDate && !toDate;
+    if (bothSet || bothEmpty) {
+      loadOrders();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromDate, toDate]);
 
   // Quando si passa a vista clienti, carica tutti gli items
   useEffect(() => {
@@ -242,7 +266,7 @@ export default function OperatoreOrdersPage() {
       loadAllItemsBulk();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode]);
+  }, [viewMode, orders]);
 
   // ─── URL stampa ──────────────────────────────────────────────────────────
   function printUrl(params: Record<string, string>) {
@@ -276,7 +300,17 @@ export default function OperatoreOrdersPage() {
 
       {/* Stampa range per data */}
       <div className="rounded-xl border bg-white p-4 shadow-sm">
-        <div className="text-sm font-semibold text-gray-700 mb-3">🖨️ Stampa per intervallo date</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-sm font-semibold text-gray-700">🖨️ Stampa per intervallo date</div>
+          {fromDate && toDate && (
+            <span className="inline-block rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
+              Filtro attivo: {fromDate} → {toDate}
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-gray-500 mb-3">
+          Seleziona un intervallo di date per filtrare l'elenco sottostante e stampare gli ordini di quel periodo.
+        </p>
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Dal</label>
@@ -296,6 +330,15 @@ export default function OperatoreOrdersPage() {
               onChange={(e) => setToDate(e.target.value)}
             />
           </div>
+          {(fromDate || toDate) && (
+            <button
+              type="button"
+              onClick={() => { setFromDate(""); setToDate(""); }}
+              className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            >
+              ✕ Cancella filtro
+            </button>
+          )}
           <a
             href={fromDate && toDate ? printUrl({ type: "byClient", mode: "range", from: fromDate, to: toDate, layout: "simple" }) : "#"}
             target="_blank"
