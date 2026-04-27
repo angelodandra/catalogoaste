@@ -308,11 +308,17 @@ async function load(silent: boolean = false) {
 
   /**
    * Calcola tutti i numeri utili per la card prodotto.
-   * Costo €/Kg = cost_eur (totale lotto, con maggiorazioni già ripartite) / peso_interno_kg
-   * Prezzo di vendita €/Kg = price_eur (totale che paga il cliente) / weight_kg pubblicato
-   *   (se peso pubblicato manca, fallback sul peso interno)
-   * Ricarico % = (price - cost) / cost × 100  (sui totali — equivalente a quello sui €/Kg
-   *   se peso interno = peso pubblicato; altrimenti il €/Kg è solo informativo).
+   *
+   * IMPORTANTE: nel portale il "Prezzo €" inserito è **sempre €/Kg**,
+   * non un totale per cassa. Il totale che paga il cliente per quel
+   * prodotto = prezzo €/Kg × peso pubblicato (kg).
+   *
+   * - Costo €/Kg = cost_eur (totale lotto) / peso pubblicato
+   *   (così è direttamente confrontabile col prezzo di vendita €/Kg)
+   *   Fallback su peso interno se peso pubblicato non c'è.
+   * - Prezzo di vendita €/Kg = quello inserito.
+   * - Ricavo totale = prezzo €/Kg × peso pub
+   * - Ricarico % = (ricavo totale - cost_eur) / cost_eur × 100
    */
   function computeRow(
     priceStr: string,
@@ -320,34 +326,42 @@ async function load(silent: boolean = false) {
     costTot: number | null,
     pesoInternoKg: number | null
   ) {
+    const wv = (weightStr ?? "").trim().replace(",", ".");
+    const weightPub = wv === "" ? null : Number(wv);
+    const validWeightPub =
+      weightPub != null && Number.isFinite(weightPub) && weightPub > 0;
+    const refKg = validWeightPub
+      ? weightPub!
+      : pesoInternoKg && pesoInternoKg > 0
+      ? pesoInternoKg
+      : null;
+
     const costPerKg =
-      costTot != null && costTot > 0 && pesoInternoKg != null && pesoInternoKg > 0
-        ? Math.round((costTot / pesoInternoKg) * 100) / 100
+      costTot != null && costTot > 0 && refKg != null
+        ? Math.round((costTot / refKg) * 100) / 100
         : null;
 
     const pv = (priceStr ?? "").trim().replace(",", ".");
-    const wv = (weightStr ?? "").trim().replace(",", ".");
     const price = pv === "" ? null : Number(pv);
-    const weightPub = wv === "" ? null : Number(wv);
     const validPrice = price != null && Number.isFinite(price);
-    const validWeight = weightPub != null && Number.isFinite(weightPub) && weightPub > 0;
 
-    const pricePerKg = validPrice
-      ? validWeight
-        ? Math.round((price! / weightPub!) * 100) / 100
-        : pesoInternoKg && pesoInternoKg > 0
-        ? Math.round((price! / pesoInternoKg) * 100) / 100
-        : null
-      : null;
+    // pricePerKg = quello inserito (è già €/Kg)
+    const pricePerKg = validPrice ? Math.round(price! * 100) / 100 : null;
+
+    // Ricavo totale per il prodotto = €/Kg × peso pubblicato (o peso interno fallback)
+    const revenueTot =
+      validPrice && refKg != null
+        ? Math.round(price! * refKg * 100) / 100
+        : null;
 
     let marginValue: number | null = null;
     let marginPct: number | null = null;
-    if (validPrice && costTot != null && costTot > 0) {
-      marginValue = Math.round((price! - costTot) * 100) / 100;
-      marginPct = Math.round(((price! - costTot) / costTot) * 1000) / 10;
+    if (revenueTot != null && costTot != null && costTot > 0) {
+      marginValue = Math.round((revenueTot - costTot) * 100) / 100;
+      marginPct = Math.round(((revenueTot - costTot) / costTot) * 1000) / 10;
     }
 
-    return { costPerKg, pricePerKg, marginValue, marginPct };
+    return { costPerKg, pricePerKg, revenueTot, marginValue, marginPct };
   }
 
   async function saveAll() {
@@ -673,7 +687,7 @@ async function load(silent: boolean = false) {
 
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <input
-                  placeholder="Prezzo €"
+                  placeholder="Prezzo €/Kg"
                   value={prices[r.id] ?? ""}
                   onChange={(e) => setPrices((p) => ({ ...p, [r.id]: e.target.value }))}
                   className="rounded border px-3 py-2"
@@ -709,7 +723,7 @@ async function load(silent: boolean = false) {
                     </div>
                   </div>
 
-                  {/* Riga 2: VENDITA €/Kg derivato + ricarico % colorato */}
+                  {/* Riga 2: VENDITA €/Kg + totale ricavo + ricarico % colorato */}
                   <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
                     <div className="text-gray-700">
                       Vendita:{" "}
@@ -718,6 +732,11 @@ async function load(silent: boolean = false) {
                           ? `${calc.pricePerKg.toFixed(2)} €/Kg`
                           : "—"}
                       </b>
+                      {calc.revenueTot != null && (
+                        <span className="ml-1 text-gray-400">
+                          ({calc.revenueTot.toFixed(2)} € tot)
+                        </span>
+                      )}
                     </div>
                     {calc.marginPct != null ? (
                       <div className={`rounded px-2 py-0.5 font-bold ${markupColor}`}>
