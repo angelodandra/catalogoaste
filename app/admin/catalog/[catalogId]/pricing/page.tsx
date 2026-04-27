@@ -16,6 +16,17 @@ type Row = {
   peso_interno_kg: number | null;
   specie: string | null;
   numero_interno_cassa: string | null;
+  cost_eur: number | null;
+  auction_total_eur: number | null;
+  auction_price_per_kg: number | null;
+  auction_boxes_count: number | null;
+};
+
+type AstaType = "civitavecchia" | "none";
+
+const ASTA_DEFAULTS: Record<AstaType, { boxCost: string; transportBoxCost: string; commissionRate: string }> = {
+  civitavecchia: { boxCost: "1", transportBoxCost: "2", commissionRate: "2" },
+  none: { boxCost: "0", transportBoxCost: "0", commissionRate: "0" },
 };
 
 export default function PricingPage(props: { params: Promise<{ catalogId: string }> }) {
@@ -39,6 +50,24 @@ export default function PricingPage(props: { params: Promise<{ catalogId: string
   const [astePreview, setAstePreview] = useState<any | null>(null);
   const [asteLoading, setAsteLoading] = useState(false);
 
+  // Tipo asta + parametri formula costo
+  const [astaType, setAstaType] = useState<AstaType>("civitavecchia");
+  const [boxCost, setBoxCost] = useState<string>(ASTA_DEFAULTS.civitavecchia.boxCost);
+  const [transportBoxCost, setTransportBoxCost] = useState<string>(
+    ASTA_DEFAULTS.civitavecchia.transportBoxCost
+  );
+  const [commissionRate, setCommissionRate] = useState<string>(
+    ASTA_DEFAULTS.civitavecchia.commissionRate
+  );
+
+  function onAstaTypeChange(next: AstaType) {
+    setAstaType(next);
+    const d = ASTA_DEFAULTS[next];
+    setBoxCost(d.boxCost);
+    setTransportBoxCost(d.transportBoxCost);
+    setCommissionRate(d.commissionRate);
+  }
+
   async function runImportAste(mode: "preview" | "apply") {
     if (!asteFile) {
       setMsg("Seleziona un file listino aste (PDF o XLSX)");
@@ -54,6 +83,13 @@ export default function PricingPage(props: { params: Promise<{ catalogId: string
       if (asteProgressiveStart.trim()) {
         fd.append("progressiveStart", asteProgressiveStart.trim());
       }
+      // Parametri asta (per il calcolo costo lato server)
+      fd.append("astaType", astaType);
+      if (astaType === "civitavecchia") {
+        fd.append("boxCost", boxCost.replace(",", "."));
+        fd.append("transportBoxCost", transportBoxCost.replace(",", "."));
+        fd.append("commissionRate", commissionRate.replace(",", "."));
+      }
 
       const res = await adminFetch("/api/admin/parse-aste-source", { method: "POST", body: fd });
       const json = await res.json();
@@ -67,7 +103,9 @@ export default function PricingPage(props: { params: Promise<{ catalogId: string
       setAstePreview(json);
       setMsg(
         mode === "preview"
-          ? `Anteprima pronta ✅ — ${json.totals?.matched ?? 0} lotti abbinati`
+          ? `Anteprima pronta ✅ — ${json.totals?.matched ?? 0} lotti abbinati${
+              json.totals?.withCost ? `, costi calcolati: ${json.totals.withCost}` : ""
+            }`
           : `Listino applicato ✅ — aggiornati: ${json.updatedCount ?? 0}`
       );
       if (mode === "apply") await load(true);
@@ -123,12 +161,49 @@ async function load(silent: boolean = false) {
     if (!silent) setMsg("Carico…");
     const { data, error } = await supabaseBrowser()
       .from("products")
-      .select("id,progressive_number,box_number,image_path,is_published,price_eur,weight_kg,peso_interno_kg,specie,numero_interno_cassa")
+      .select(
+        "id,progressive_number,box_number,image_path,is_published,price_eur,weight_kg,peso_interno_kg,specie,numero_interno_cassa,cost_eur,auction_total_eur,auction_price_per_kg,auction_boxes_count"
+      )
       .eq("catalog_id", catalogId)
       .order("progressive_number", { ascending: true });
 
     if (error) {
-      setMsg("Errore caricamento prodotti");
+      // Fallback in caso la migrazione costo non sia ancora applicata: rileggi senza i campi nuovi
+      const fallback = await supabaseBrowser()
+        .from("products")
+        .select(
+          "id,progressive_number,box_number,image_path,is_published,price_eur,weight_kg,peso_interno_kg,specie,numero_interno_cassa"
+        )
+        .eq("catalog_id", catalogId)
+        .order("progressive_number", { ascending: true });
+
+      if (fallback.error) {
+        setMsg("Errore caricamento prodotti");
+        return;
+      }
+      const list = (fallback.data as any[]) || [];
+      setRows(
+        list.map((r) => ({
+          ...r,
+          cost_eur: null,
+          auction_total_eur: null,
+          auction_price_per_kg: null,
+          auction_boxes_count: null,
+        }))
+      );
+
+      const priceMap: Record<string, string> = {};
+      const weightMap: Record<string, string> = {};
+      for (const r of list) {
+        priceMap[r.id] = r.price_eur == null ? "" : String(r.price_eur);
+        weightMap[r.id] = r.weight_kg == null ? "" : String(r.weight_kg);
+      }
+      setPrices(priceMap);
+      setWeights(weightMap);
+
+      setMsg(
+        "⚠️ Migrazione costo asta non applicata. Esegui migration_costo_asta.sql in Supabase per attivare costo e ricarico %."
+      );
       return;
     }
 
@@ -149,12 +224,43 @@ async function load(silent: boolean = false) {
 
   useEffect(() => {
     load();
+    // Carico tipo asta + parametri salvati sul catalogo (se presenti)
+    (async () => {
+      const { data, error } = await supabaseBrowser()
+        .from("catalogs")
+        .select("asta_type, asta_params")
+        .eq("id", catalogId)
+        .maybeSingle();
+      if (error || !data) return;
+      const t = (data as any).asta_type as string | null;
+      if (t === "civitavecchia") {
+        setAstaType("civitavecchia");
+        const p = ((data as any).asta_params || {}) as any;
+        if (p.boxCost != null) setBoxCost(String(p.boxCost));
+        if (p.transportBoxCost != null) setTransportBoxCost(String(p.transportBoxCost));
+        if (p.commissionRate != null) setCommissionRate(String(p.commissionRate));
+      }
+    })();
   }, [catalogId]);
 
   const notPricedCount = useMemo(
     () => rows.filter((r) => (prices[r.id] ?? "").trim() === "").length,
     [rows, prices]
   );
+
+  const withCostCount = useMemo(() => rows.filter((r) => r.cost_eur != null).length, [rows]);
+
+  /** Calcola il ricarico % a partire da prezzo di vendita e costo */
+  function computeMarkup(priceStr: string, cost: number | null): { value: number | null; pct: number | null } {
+    if (cost == null || cost <= 0) return { value: null, pct: null };
+    const pv = (priceStr ?? "").trim().replace(",", ".");
+    if (pv === "") return { value: null, pct: null };
+    const price = Number(pv);
+    if (!Number.isFinite(price)) return { value: null, pct: null };
+    const margin = price - cost;
+    const pct = (margin / cost) * 100;
+    return { value: Math.round(margin * 100) / 100, pct: Math.round(pct * 10) / 10 };
+  }
 
   async function saveAll() {
     setSaving(true);
@@ -249,6 +355,71 @@ async function load(silent: boolean = false) {
 
       <div className="mb-3 text-sm text-gray-600">
         Prodotti senza prezzo: <b>{notPricedCount}</b>
+        {withCostCount > 0 && (
+          <span className="ml-3">
+            · Con costo asta: <b>{withCostCount}</b>
+          </span>
+        )}
+      </div>
+
+      {/* ── Selettore asta + parametri formula costo ─────────── */}
+      <div className="mb-4 rounded-xl border-2 border-amber-300 bg-amber-50 p-3">
+        <div className="text-sm font-semibold text-amber-900">
+          🐟 Asta sorgente del catalogo
+        </div>
+        <p className="mt-1 text-xs text-amber-800">
+          Scegli l'asta da cui proviene questo catalogo: i parametri qui sotto saranno usati per calcolare il <b>costo reale</b> di ogni lotto al momento dell'import.
+        </p>
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <select
+            value={astaType}
+            onChange={(e) => onAstaTypeChange(e.target.value as AstaType)}
+            className="rounded border bg-white px-3 py-2 text-sm font-semibold"
+          >
+            <option value="civitavecchia">Civitavecchia</option>
+            <option value="none">Nessuna formula (costo = imponibile grezzo)</option>
+          </select>
+
+          {astaType === "civitavecchia" && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <label className="flex items-center gap-1">
+                <span className="text-amber-900">€/cassa</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={boxCost}
+                  onChange={(e) => setBoxCost(e.target.value)}
+                  className="w-20 rounded border px-2 py-1"
+                />
+              </label>
+              <label className="flex items-center gap-1">
+                <span className="text-amber-900">€/cassa trasp.</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={transportBoxCost}
+                  onChange={(e) => setTransportBoxCost(e.target.value)}
+                  className="w-20 rounded border px-2 py-1"
+                />
+              </label>
+              <label className="flex items-center gap-1">
+                <span className="text-amber-900">% commissione</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={commissionRate}
+                  onChange={(e) => setCommissionRate(e.target.value)}
+                  className="w-20 rounded border px-2 py-1"
+                />
+              </label>
+            </div>
+          )}
+        </div>
+        {astaType === "civitavecchia" && (
+          <div className="mt-2 text-xs text-amber-800">
+            Formula: <b>Costo = Imponibile + (casse × €cassa) + (casse × €trasp.) + (Imponibile × commiss.%)</b>
+          </div>
+        )}
       </div>
 
       {/* ── Import da listino aste ────────────────────────── */}
@@ -256,7 +427,7 @@ async function load(silent: boolean = false) {
         <div className="text-sm font-semibold">Import da listino aste (PDF / XLSX acquisti)</div>
         <p className="mt-1 text-xs text-gray-500">
           Carica il PDF "Dettaglio lotti" o il file XLSX Acquisti Mercati.<br />
-          I dati (specie, peso interno, N° coop) vengono abbinati ai prodotti del catalogo in ordine di progressivo.
+          I dati (specie, peso interno, N° coop, prezzo €/Kg, totale, casse, costo reale calcolato) vengono abbinati ai prodotti del catalogo in ordine di progressivo.
         </p>
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
           <input
@@ -303,6 +474,14 @@ async function load(silent: boolean = false) {
                 <span> — Inizio da progressivo <b>{astePreview.totals.startAtProgressive}</b></span>
               )}
             </div>
+            {astePreview.totals.withCost != null && (
+              <div>
+                Con costo calcolato: <b>{astePreview.totals.withCost}</b>
+                {astePreview.totals.totalCost != null && (
+                  <span> — Costo totale stimato: <b>{Number(astePreview.totals.totalCost).toFixed(2)} €</b></span>
+                )}
+              </div>
+            )}
             {astePreview.sample?.matched?.length > 0 && (
               <details className="mt-1">
                 <summary className="cursor-pointer text-xs text-gray-500">Mostra anteprima abbinamenti</summary>
@@ -312,6 +491,8 @@ async function load(silent: boolean = false) {
                       Prog. {m.progressive_number} ← Peso {m.peso_interno_kg} kg
                       {m.specie ? `, ${m.specie}` : ""}
                       {m.numero_interno_cassa ? ` (coop ${m.numero_interno_cassa})` : ""}
+                      {m.totale_eur != null ? ` · imp. ${Number(m.totale_eur).toFixed(2)}€` : ""}
+                      {m.cost_eur != null ? ` → costo ${Number(m.cost_eur).toFixed(2)}€` : ""}
                     </div>
                   ))}
                 </div>
@@ -380,62 +561,106 @@ async function load(silent: boolean = false) {
       {msg && <div className="mb-2 text-sm">{msg}</div>}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {rows.map((r) => (
-          <div key={r.id} className="rounded-xl border bg-white p-3">
-            <img
-              src={`${base}/storage/v1/object/public/catalog-images/${r.image_path}`}
-              className="h-40 w-full rounded-lg object-cover"
-            />
+        {rows.map((r) => {
+          const markup = computeMarkup(prices[r.id] ?? "", r.cost_eur);
+          const markupColor =
+            markup.pct == null
+              ? "text-gray-400"
+              : markup.pct < 0
+              ? "text-red-700 bg-red-100"
+              : markup.pct < 15
+              ? "text-amber-800 bg-amber-100"
+              : "text-green-800 bg-green-100";
 
-            <div className="mt-2 text-sm text-gray-700">
-              <div>
-                <b>Prog.</b> {r.progressive_number}
-                {r.box_number ? <span className="ml-1 text-gray-500">(Cassa {r.box_number})</span> : ""}
-                {r.numero_interno_cassa != null && (
-                  <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-xs font-semibold text-blue-700">
-                    N° coop: {r.numero_interno_cassa}
-                  </span>
+          return (
+            <div key={r.id} className="rounded-xl border bg-white p-3">
+              <img
+                src={`${base}/storage/v1/object/public/catalog-images/${r.image_path}`}
+                className="h-40 w-full rounded-lg object-cover"
+              />
+
+              <div className="mt-2 text-sm text-gray-700">
+                <div>
+                  <b>Prog.</b> {r.progressive_number}
+                  {r.box_number ? <span className="ml-1 text-gray-500">(Cassa {r.box_number})</span> : ""}
+                  {r.numero_interno_cassa != null && (
+                    <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-xs font-semibold text-blue-700">
+                      N° coop: {r.numero_interno_cassa}
+                    </span>
+                  )}
+                </div>
+                {r.peso_interno_kg != null && (
+                  <div className="text-gray-400">Peso int: {r.peso_interno_kg} kg</div>
                 )}
+                <div><b>Specie</b>: {r.specie || "—"}</div>
               </div>
-              {r.peso_interno_kg != null && (
-                <div className="text-gray-400">Peso int: {r.peso_interno_kg} kg</div>
+
+              <input
+                placeholder="Specie (es. Orata, Spigola...)"
+                value={r.specie ?? ""}
+                onChange={async (e) => {
+                  const val = e.target.value;
+                  setRows((prev) =>
+                    prev.map((x) => (x.id === r.id ? { ...x, specie: val } : x))
+                  );
+                  await adminFetch("/api/admin/update-specie", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ productId: r.id, specie: val }),
+                  });
+                }}
+                className="mt-2 w-full rounded border px-3 py-2"
+              />
+
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <input
+                  placeholder="Prezzo €"
+                  value={prices[r.id] ?? ""}
+                  onChange={(e) => setPrices((p) => ({ ...p, [r.id]: e.target.value }))}
+                  className="rounded border px-3 py-2"
+                />
+                <input
+                  placeholder="Peso pub. kg"
+                  value={weights[r.id] ?? ""}
+                  onChange={(e) => setWeights((p) => ({ ...p, [r.id]: e.target.value }))}
+                  className="rounded border px-3 py-2"
+                />
+              </div>
+
+              {/* ── Costo + Ricarico % (sotto il prezzo di vendita) ─── */}
+              {r.cost_eur != null ? (
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs">
+                  <div className="text-gray-600">
+                    Costo: <b className="text-gray-900">{Number(r.cost_eur).toFixed(2)} €</b>
+                    {r.auction_price_per_kg != null && (
+                      <span className="ml-1 text-gray-400">
+                        ({Number(r.auction_price_per_kg).toFixed(2)} €/Kg
+                        {r.auction_boxes_count ? ` · ${r.auction_boxes_count} casse` : ""})
+                      </span>
+                    )}
+                  </div>
+                  {markup.pct != null ? (
+                    <div className={`rounded px-2 py-0.5 font-bold ${markupColor}`}>
+                      Ricarico: {markup.pct.toFixed(1)}%
+                      {markup.value != null && (
+                        <span className="ml-1 font-normal opacity-80">
+                          ({markup.value >= 0 ? "+" : ""}
+                          {markup.value.toFixed(2)} €)
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-gray-400">Inserisci prezzo →</div>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-2 rounded-lg border border-dashed border-gray-300 px-2 py-1.5 text-xs text-gray-400">
+                  Costo non calcolato (importa file asta)
+                </div>
               )}
-              <div><b>Specie</b>: {r.specie || "—"}</div>
             </div>
-
-            <input
-              placeholder="Specie (es. Orata, Spigola...)"
-              value={r.specie ?? ""}
-              onChange={async (e) => {
-                const val = e.target.value;
-                setRows((prev) =>
-                  prev.map((x) => (x.id === r.id ? { ...x, specie: val } : x))
-                );
-                await adminFetch("/api/admin/update-specie", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ productId: r.id, specie: val }),
-                });
-              }}
-              className="mt-2 w-full rounded border px-3 py-2"
-            />
-
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <input
-                placeholder="Prezzo €"
-                value={prices[r.id] ?? ""}
-                onChange={(e) => setPrices((p) => ({ ...p, [r.id]: e.target.value }))}
-                className="rounded border px-3 py-2"
-              />
-              <input
-                placeholder="Peso pub. kg"
-                value={weights[r.id] ?? ""}
-                onChange={(e) => setWeights((p) => ({ ...p, [r.id]: e.target.value }))}
-                className="rounded border px-3 py-2"
-              />
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

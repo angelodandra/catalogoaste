@@ -13,6 +13,10 @@ type ParsedLot = {
   numero_interno_cassa: string | null; // cooperative lot number (may be null for XLSX without it)
   specie: string | null;
   peso_interno_kg: number;
+  // Campi costo (opzionali — disponibili dal PDF e dall'XLSX se contiene le colonne)
+  prezzo_eur_kg: number | null;
+  totale_eur: number | null;
+  casse: number | null;
   rowIndex: number; // 1-based position in source file
 };
 
@@ -121,6 +125,9 @@ async function parsePdf(buf: Buffer): Promise<ParsedLot[]> {
     const coopNum = m[1]; // Prg. column = cooperative cassa number
     const specie = m[2].trim() || null;
     const peso = parseItalianNum(m[3]);
+    const prezzo = parseItalianNum(m[4]);
+    const totale = parseItalianNum(m[5]);
+    const casse = parseInt(m[6], 10);
 
     if (!Number.isFinite(peso) || peso <= 0) continue;
 
@@ -129,6 +136,9 @@ async function parsePdf(buf: Buffer): Promise<ParsedLot[]> {
       numero_interno_cassa: coopNum,
       specie,
       peso_interno_kg: Math.round(peso * 100) / 100,
+      prezzo_eur_kg: Number.isFinite(prezzo) && prezzo > 0 ? Math.round(prezzo * 10000) / 10000 : null,
+      totale_eur: Number.isFinite(totale) && totale > 0 ? Math.round(totale * 100) / 100 : null,
+      casse: Number.isFinite(casse) && casse > 0 ? casse : null,
       rowIndex,
     });
   }
@@ -142,6 +152,8 @@ async function parsePdf(buf: Buffer): Promise<ParsedLot[]> {
 //   col 2 = N. della vendita (lot number = coop box number)
 //   col 8 = Specie, nome in un'altra lingua (Italian name)
 //   col 15 = Peso netto (kg)
+// Per i campi costo (prezzo €/kg, totale €, casse) tentiamo header detection
+// poiché la posizione varia tra esportazioni.
 // ────────────────────────────────────────────────
 
 function parseXlsxAcquisti(buf: Buffer): ParsedLot[] {
@@ -158,6 +170,26 @@ function parseXlsxAcquisti(buf: Buffer): ParsedLot[] {
   const lots: ParsedLot[] = [];
 
   if (isAcquistiFormat) {
+    // ── Header detection per i campi costo ────────────────────────
+    // Ricerco la riga 0 (header) per individuare le colonne di prezzo/totale/casse
+    const header = (rows[0] as any[]) || [];
+    const headerLow = header.map((h) => String(h ?? "").toLowerCase().trim());
+
+    const findCol = (...needles: string[]) => {
+      for (let i = 0; i < headerLow.length; i++) {
+        const h = headerLow[i];
+        for (const n of needles) {
+          if (h.includes(n)) return i;
+        }
+      }
+      return -1;
+    };
+
+    // Colonne note/probabili
+    const idxPrezzo = findCol("prezzo", "€/kg", "eur/kg", "prz");
+    const idxTotale = findCol("totale", "importo", "valore");
+    const idxCasse = findCol("casse", "n.casse", "n. casse", "n_casse", "casse n");
+
     // Skip header row (row 0)
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i] as any[];
@@ -172,10 +204,22 @@ function parseXlsxAcquisti(buf: Buffer): ParsedLot[] {
 
       if (!Number.isFinite(peso) || peso <= 0) continue;
 
+      // Campi costo (opzionali)
+      const prezzoRaw = idxPrezzo >= 0 ? r[idxPrezzo] : null;
+      const totaleRaw = idxTotale >= 0 ? r[idxTotale] : null;
+      const casseRaw = idxCasse >= 0 ? r[idxCasse] : null;
+
+      const prezzo = prezzoRaw != null && prezzoRaw !== "" ? Number(prezzoRaw) : NaN;
+      const totale = totaleRaw != null && totaleRaw !== "" ? Number(totaleRaw) : NaN;
+      const casse = casseRaw != null && casseRaw !== "" ? Number(casseRaw) : NaN;
+
       lots.push({
         numero_interno_cassa: coopNum,
         specie,
         peso_interno_kg: Math.round(peso * 100) / 100,
+        prezzo_eur_kg: Number.isFinite(prezzo) && prezzo > 0 ? Math.round(prezzo * 10000) / 10000 : null,
+        totale_eur: Number.isFinite(totale) && totale > 0 ? Math.round(totale * 100) / 100 : null,
+        casse: Number.isFinite(casse) && casse > 0 ? Math.round(casse) : null,
         rowIndex: i, // 1-based position (header = 0)
       });
     }
@@ -206,11 +250,19 @@ function parseXlsxAcquisti(buf: Buffer): ParsedLot[] {
         const peso = Number(col0);
         if (!Number.isFinite(peso) || peso <= 0) continue;
 
+        // Pivot format: col 1 = prezzo/kg (se presente), col 2 = "1" (1 cassa)
+        const prezzoRaw = r[1];
+        const prezzo = prezzoRaw != null ? Number(prezzoRaw) : NaN;
+        const totale = Number.isFinite(prezzo) && prezzo > 0 ? Math.round(peso * prezzo * 100) / 100 : null;
+
         rowIndex++;
         lots.push({
           numero_interno_cassa: null, // pivot format has no coop number
           specie: currentSpecie,
           peso_interno_kg: Math.round(peso * 100) / 100,
+          prezzo_eur_kg: Number.isFinite(prezzo) && prezzo > 0 ? Math.round(prezzo * 10000) / 10000 : null,
+          totale_eur: totale,
+          casse: 1, // pivot format = 1 cassa per riga
           rowIndex,
         });
       }
@@ -218,6 +270,50 @@ function parseXlsxAcquisti(buf: Buffer): ParsedLot[] {
   }
 
   return lots;
+}
+
+// ────────────────────────────────────────────────
+// Cost calculation (per asta type)
+// ────────────────────────────────────────────────
+
+type AstaType = "civitavecchia" | "none";
+
+type CivitavecchiaParams = {
+  boxCost: number;          // €/cassa
+  transportBoxCost: number; // €/cassa trasporto
+  commissionRate: number;   // % su imponibile
+};
+
+type AstaParams = CivitavecchiaParams | Record<string, never>;
+
+/**
+ * Calcola il costo reale del lotto secondo la formula dell'asta scelta.
+ * Civitavecchia: costo = totale + (casse × boxCost) + (casse × transportBoxCost) + (totale × commissionRate%)
+ * none: costo = totale (grezzo)
+ * Restituisce null se i dati minimi non sono disponibili.
+ */
+function computeCost(
+  lot: ParsedLot,
+  astaType: AstaType,
+  params: AstaParams
+): number | null {
+  if (lot.totale_eur == null || lot.totale_eur <= 0) return null;
+
+  if (astaType === "civitavecchia") {
+    const p = params as CivitavecchiaParams;
+    const casse = lot.casse ?? 1;
+    const totale = lot.totale_eur;
+    const boxCost = Number(p.boxCost) || 0;
+    const transportBoxCost = Number(p.transportBoxCost) || 0;
+    const commissionRate = (Number(p.commissionRate) || 0) / 100;
+
+    const extra =
+      casse * boxCost + casse * transportBoxCost + totale * commissionRate;
+    return Math.round((totale + extra) * 100) / 100;
+  }
+
+  // Default: no extras
+  return Math.round(lot.totale_eur * 100) / 100;
 }
 
 // ────────────────────────────────────────────────
@@ -234,6 +330,21 @@ export async function POST(req: Request) {
     const file = form.get("file") as File | null;
     const progressiveStartRaw = form.get("progressiveStart");
     const progressiveStart = progressiveStartRaw != null ? parseInt(String(progressiveStartRaw), 10) : null;
+
+    // Parametri asta (opzionali — se assenti il costo viene salvato senza maggiorazioni)
+    const astaTypeRaw = (form.get("astaType") as string | null)?.trim().toLowerCase() || "";
+    const astaType: AstaType = astaTypeRaw === "civitavecchia" ? "civitavecchia" : "none";
+
+    const astaParams: AstaParams =
+      astaType === "civitavecchia"
+        ? {
+            boxCost: parseFloat((form.get("boxCost") as string | null) || "1") || 0,
+            transportBoxCost:
+              parseFloat((form.get("transportBoxCost") as string | null) || "2") || 0,
+            commissionRate:
+              parseFloat((form.get("commissionRate") as string | null) || "2") || 0,
+          }
+        : {};
 
     if (!catalogId) return NextResponse.json({ error: "catalogId mancante" }, { status: 400 });
     if (!file) return NextResponse.json({ error: "file mancante" }, { status: 400 });
@@ -301,6 +412,10 @@ export async function POST(req: Request) {
       numero_interno_cassa: string | null;
       specie: string | null;
       peso_interno_kg: number;
+      prezzo_eur_kg: number | null;
+      totale_eur: number | null;
+      casse: number | null;
+      cost_eur: number | null;
       progressive_number: number;
       productId: string;
     };
@@ -315,27 +430,40 @@ export async function POST(req: Request) {
         continue;
       }
       const prod = allProds[prodIdx];
+      const cost = computeCost(lots[i], astaType, astaParams);
       matched.push({
         lotRowIndex: lots[i].rowIndex,
         numero_interno_cassa: lots[i].numero_interno_cassa,
         specie: lots[i].specie,
         peso_interno_kg: lots[i].peso_interno_kg,
+        prezzo_eur_kg: lots[i].prezzo_eur_kg,
+        totale_eur: lots[i].totale_eur,
+        casse: lots[i].casse,
+        cost_eur: cost,
         progressive_number: prod.progressive_number,
         productId: prod.id,
       });
     }
+
+    // Statistiche costi (utili per la preview)
+    const matchedWithCost = matched.filter((m) => m.cost_eur != null);
+    const totalCost = matchedWithCost.reduce((s, m) => s + (m.cost_eur || 0), 0);
 
     if (mode === "preview") {
       return NextResponse.json({
         ok: true,
         mode,
         fileType,
+        astaType,
+        astaParams,
         totals: {
           lotsFound: lots.length,
           matched: matched.length,
           unmatched: unmatched.length,
           catalogProducts: allProds.length,
           startAtProgressive: allProds[startIdx]?.progressive_number ?? null,
+          withCost: matchedWithCost.length,
+          totalCost: Math.round(totalCost * 100) / 100,
         },
         sample: {
           matched: matched.slice(0, 30),
@@ -344,7 +472,16 @@ export async function POST(req: Request) {
       });
     }
 
-    // Apply: update products in batches
+    // Apply: persist asta_type/params on catalog (best effort) + update products in batches
+    if (astaType !== "none") {
+      const { error: cErr } = await supabase
+        .from("catalogs")
+        .update({ asta_type: astaType, asta_params: astaParams as any })
+        .eq("id", catalogId);
+      // Non blocchiamo se le colonne non esistono ancora (migrazione non ancora applicata)
+      if (cErr) console.warn("[parse-aste-source] update catalog asta_type failed:", cErr.message);
+    }
+
     const concurrency = 20;
     let updatedCount = 0;
 
@@ -359,6 +496,11 @@ export async function POST(req: Request) {
               weight_kg: Math.round((m.peso_interno_kg + 0.2) * 100) / 100,
               specie: m.specie,
               ...(m.numero_interno_cassa !== null ? { numero_interno_cassa: m.numero_interno_cassa } : {}),
+              // Campi costo (presenti solo se la migrazione è applicata)
+              ...(m.cost_eur != null ? { cost_eur: m.cost_eur } : {}),
+              ...(m.totale_eur != null ? { auction_total_eur: m.totale_eur } : {}),
+              ...(m.prezzo_eur_kg != null ? { auction_price_per_kg: m.prezzo_eur_kg } : {}),
+              ...(m.casse != null ? { auction_boxes_count: m.casse } : {}),
             })
             .eq("id", m.productId)
         )
@@ -374,11 +516,15 @@ export async function POST(req: Request) {
       ok: true,
       mode,
       fileType,
+      astaType,
+      astaParams,
       updatedCount,
       totals: {
         lotsFound: lots.length,
         matched: matched.length,
         unmatched: unmatched.length,
+        withCost: matchedWithCost.length,
+        totalCost: Math.round(totalCost * 100) / 100,
       },
       sample: {
         unmatched: unmatched.slice(0, 20),
