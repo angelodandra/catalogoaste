@@ -250,16 +250,48 @@ async function load(silent: boolean = false) {
 
   const withCostCount = useMemo(() => rows.filter((r) => r.cost_eur != null).length, [rows]);
 
-  /** Calcola il ricarico % a partire da prezzo di vendita e costo */
-  function computeMarkup(priceStr: string, cost: number | null): { value: number | null; pct: number | null } {
-    if (cost == null || cost <= 0) return { value: null, pct: null };
+  /**
+   * Calcola tutti i numeri utili per la card prodotto.
+   * Costo €/Kg = cost_eur (totale lotto, con maggiorazioni già ripartite) / peso_interno_kg
+   * Prezzo di vendita €/Kg = price_eur (totale che paga il cliente) / weight_kg pubblicato
+   *   (se peso pubblicato manca, fallback sul peso interno)
+   * Ricarico % = (price - cost) / cost × 100  (sui totali — equivalente a quello sui €/Kg
+   *   se peso interno = peso pubblicato; altrimenti il €/Kg è solo informativo).
+   */
+  function computeRow(
+    priceStr: string,
+    weightStr: string,
+    costTot: number | null,
+    pesoInternoKg: number | null
+  ) {
+    const costPerKg =
+      costTot != null && costTot > 0 && pesoInternoKg != null && pesoInternoKg > 0
+        ? Math.round((costTot / pesoInternoKg) * 100) / 100
+        : null;
+
     const pv = (priceStr ?? "").trim().replace(",", ".");
-    if (pv === "") return { value: null, pct: null };
-    const price = Number(pv);
-    if (!Number.isFinite(price)) return { value: null, pct: null };
-    const margin = price - cost;
-    const pct = (margin / cost) * 100;
-    return { value: Math.round(margin * 100) / 100, pct: Math.round(pct * 10) / 10 };
+    const wv = (weightStr ?? "").trim().replace(",", ".");
+    const price = pv === "" ? null : Number(pv);
+    const weightPub = wv === "" ? null : Number(wv);
+    const validPrice = price != null && Number.isFinite(price);
+    const validWeight = weightPub != null && Number.isFinite(weightPub) && weightPub > 0;
+
+    const pricePerKg = validPrice
+      ? validWeight
+        ? Math.round((price! / weightPub!) * 100) / 100
+        : pesoInternoKg && pesoInternoKg > 0
+        ? Math.round((price! / pesoInternoKg) * 100) / 100
+        : null
+      : null;
+
+    let marginValue: number | null = null;
+    let marginPct: number | null = null;
+    if (validPrice && costTot != null && costTot > 0) {
+      marginValue = Math.round((price! - costTot) * 100) / 100;
+      marginPct = Math.round(((price! - costTot) / costTot) * 1000) / 10;
+    }
+
+    return { costPerKg, pricePerKg, marginValue, marginPct };
   }
 
   async function saveAll() {
@@ -562,13 +594,18 @@ async function load(silent: boolean = false) {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {rows.map((r) => {
-          const markup = computeMarkup(prices[r.id] ?? "", r.cost_eur);
+          const calc = computeRow(
+            prices[r.id] ?? "",
+            weights[r.id] ?? "",
+            r.cost_eur,
+            r.peso_interno_kg
+          );
           const markupColor =
-            markup.pct == null
+            calc.marginPct == null
               ? "text-gray-400"
-              : markup.pct < 0
+              : calc.marginPct < 0
               ? "text-red-700 bg-red-100"
-              : markup.pct < 15
+              : calc.marginPct < 15
               ? "text-amber-800 bg-amber-100"
               : "text-green-800 bg-green-100";
 
@@ -627,31 +664,53 @@ async function load(silent: boolean = false) {
                 />
               </div>
 
-              {/* ── Costo + Ricarico % (sotto il prezzo di vendita) ─── */}
+              {/* ── Costo €/Kg + Ricarico % (sotto il prezzo di vendita) ─── */}
               {r.cost_eur != null ? (
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs">
-                  <div className="text-gray-600">
-                    Costo: <b className="text-gray-900">{Number(r.cost_eur).toFixed(2)} €</b>
-                    {r.auction_price_per_kg != null && (
+                <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs">
+                  {/* Riga 1: COSTO — primario in €/Kg, secondario totali */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-gray-700">
+                      Costo:{" "}
+                      <b className="text-gray-900">
+                        {calc.costPerKg != null
+                          ? `${calc.costPerKg.toFixed(2)} €/Kg`
+                          : `${Number(r.cost_eur).toFixed(2)} €`}
+                      </b>
                       <span className="ml-1 text-gray-400">
-                        ({Number(r.auction_price_per_kg).toFixed(2)} €/Kg
-                        {r.auction_boxes_count ? ` · ${r.auction_boxes_count} casse` : ""})
+                        ({Number(r.cost_eur).toFixed(2)} € tot
+                        {r.auction_boxes_count ? ` · ${r.auction_boxes_count} casse` : ""}
+                        {r.auction_price_per_kg != null
+                          ? ` · asta ${Number(r.auction_price_per_kg).toFixed(2)} €/Kg`
+                          : ""}
+                        )
                       </span>
+                    </div>
+                  </div>
+
+                  {/* Riga 2: VENDITA €/Kg derivato + ricarico % colorato */}
+                  <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-gray-700">
+                      Vendita:{" "}
+                      <b className="text-gray-900">
+                        {calc.pricePerKg != null
+                          ? `${calc.pricePerKg.toFixed(2)} €/Kg`
+                          : "—"}
+                      </b>
+                    </div>
+                    {calc.marginPct != null ? (
+                      <div className={`rounded px-2 py-0.5 font-bold ${markupColor}`}>
+                        Ricarico: {calc.marginPct.toFixed(1)}%
+                        {calc.marginValue != null && (
+                          <span className="ml-1 font-normal opacity-80">
+                            ({calc.marginValue >= 0 ? "+" : ""}
+                            {calc.marginValue.toFixed(2)} €)
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-gray-400">Inserisci prezzo →</div>
                     )}
                   </div>
-                  {markup.pct != null ? (
-                    <div className={`rounded px-2 py-0.5 font-bold ${markupColor}`}>
-                      Ricarico: {markup.pct.toFixed(1)}%
-                      {markup.value != null && (
-                        <span className="ml-1 font-normal opacity-80">
-                          ({markup.value >= 0 ? "+" : ""}
-                          {markup.value.toFixed(2)} €)
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-gray-400">Inserisci prezzo →</div>
-                  )}
                 </div>
               ) : (
                 <div className="mt-2 rounded-lg border border-dashed border-gray-300 px-2 py-1.5 text-xs text-gray-400">
