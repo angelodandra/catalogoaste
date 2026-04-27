@@ -22,11 +22,65 @@ type Row = {
   auction_boxes_count: number | null;
 };
 
-type AstaType = "civitavecchia" | "none";
+type AstaType =
+  | "civitavecchia"
+  | "agde"
+  | "sete"
+  | "tarragona"
+  | "roses"
+  | "none";
 
-const ASTA_DEFAULTS: Record<AstaType, { boxCost: string; transportBoxCost: string; commissionRate: string }> = {
+// Default identici a ANALISI VENDITA/public/aste.html (e civitavecchia.html)
+const ASTA_DEFAULTS: Record<AstaType, Record<string, string>> = {
   civitavecchia: { boxCost: "1", transportBoxCost: "2", commissionRate: "2" },
-  none: { boxCost: "0", transportBoxCost: "0", commissionRate: "0" },
+  agde: {
+    "ag-cassa": "1.00",
+    "ag-cop": "0.70",
+    "ag-pal": "5.00",
+    "ag-rev": "2.00",
+    "ag-tc": "2.00",
+    "ag-td": "2.50",
+    "ag-mul": "0.0141",
+    "ag-ghi": "0.10",
+    "ag-car": "0.0714",
+    "ag-amm": "4.50",
+    surcarb: "31",
+  },
+  sete: {
+    "se-rec": "1.54",
+    "se-pal": "3.60",
+    "se-gest": "1.50",
+    "se-td": "2.00",
+    "se-rev": "2.00",
+    "se-frais": "1.81",
+    surcarb: "31",
+  },
+  tarragona: {
+    "ta-cgr": "0.50",
+    "ta-cpe": "0.50",
+    "ta-man": "1.90",
+    "ta-pal": "6.00",
+    "ta-etq": "0.015",
+    "ta-rec": "0.16",
+    "ta-ret": "4.00",
+    surcarb: "31",
+  },
+  roses: {
+    "ro-imp": "2.00",
+    "ro-car": "2.10",
+    "ro-cai": "6.50",
+    surcarb: "31",
+  },
+  none: {},
+};
+
+const ASTA_LABELS: Record<AstaType, string> = {
+  civitavecchia: "Civitavecchia (IT)",
+  agde: "Grau d'Agde (FR)",
+  sete: "Sète (FR)",
+  tarragona: "Tarragona (ES)",
+  roses: "Roses (ES)",
+  none: "Nessuna formula (costo = imponibile grezzo)",
 };
 
 export default function PricingPage(props: { params: Promise<{ catalogId: string }> }) {
@@ -50,22 +104,19 @@ export default function PricingPage(props: { params: Promise<{ catalogId: string
   const [astePreview, setAstePreview] = useState<any | null>(null);
   const [asteLoading, setAsteLoading] = useState(false);
 
-  // Tipo asta + parametri formula costo
+  // Tipo asta + parametri formula costo (generico key→value)
   const [astaType, setAstaType] = useState<AstaType>("civitavecchia");
-  const [boxCost, setBoxCost] = useState<string>(ASTA_DEFAULTS.civitavecchia.boxCost);
-  const [transportBoxCost, setTransportBoxCost] = useState<string>(
-    ASTA_DEFAULTS.civitavecchia.transportBoxCost
-  );
-  const [commissionRate, setCommissionRate] = useState<string>(
-    ASTA_DEFAULTS.civitavecchia.commissionRate
+  const [astaParams, setAstaParams] = useState<Record<string, string>>(
+    { ...ASTA_DEFAULTS.civitavecchia }
   );
 
   function onAstaTypeChange(next: AstaType) {
     setAstaType(next);
-    const d = ASTA_DEFAULTS[next];
-    setBoxCost(d.boxCost);
-    setTransportBoxCost(d.transportBoxCost);
-    setCommissionRate(d.commissionRate);
+    setAstaParams({ ...ASTA_DEFAULTS[next] });
+  }
+
+  function setParam(key: string, value: string) {
+    setAstaParams((p) => ({ ...p, [key]: value }));
   }
 
   async function runImportAste(mode: "preview" | "apply") {
@@ -85,10 +136,9 @@ export default function PricingPage(props: { params: Promise<{ catalogId: string
       }
       // Parametri asta (per il calcolo costo lato server)
       fd.append("astaType", astaType);
-      if (astaType === "civitavecchia") {
-        fd.append("boxCost", boxCost.replace(",", "."));
-        fd.append("transportBoxCost", transportBoxCost.replace(",", "."));
-        fd.append("commissionRate", commissionRate.replace(",", "."));
+      // Inviamo tutti i parametri dell'asta selezionata (chiavi specifiche per tipo)
+      for (const [k, v] of Object.entries(astaParams)) {
+        fd.append(k, String(v).replace(",", "."));
       }
 
       const res = await adminFetch("/api/admin/parse-aste-source", { method: "POST", body: fd });
@@ -233,12 +283,18 @@ async function load(silent: boolean = false) {
         .maybeSingle();
       if (error || !data) return;
       const t = (data as any).asta_type as string | null;
-      if (t === "civitavecchia") {
-        setAstaType("civitavecchia");
-        const p = ((data as any).asta_params || {}) as any;
-        if (p.boxCost != null) setBoxCost(String(p.boxCost));
-        if (p.transportBoxCost != null) setTransportBoxCost(String(p.transportBoxCost));
-        if (p.commissionRate != null) setCommissionRate(String(p.commissionRate));
+      const validTypes: AstaType[] = [
+        "civitavecchia", "agde", "sete", "tarragona", "roses",
+      ];
+      if (t && (validTypes as string[]).includes(t)) {
+        const tt = t as AstaType;
+        setAstaType(tt);
+        const p = ((data as any).asta_params || {}) as Record<string, any>;
+        const merged: Record<string, string> = { ...ASTA_DEFAULTS[tt] };
+        for (const [k, v] of Object.entries(p)) {
+          if (v != null && v !== "") merged[k] = String(v);
+        }
+        setAstaParams(merged);
       }
     })();
   }, [catalogId]);
@@ -400,7 +456,7 @@ async function load(silent: boolean = false) {
           🐟 Asta sorgente del catalogo
         </div>
         <p className="mt-1 text-xs text-amber-800">
-          Scegli l'asta da cui proviene questo catalogo: i parametri qui sotto saranno usati per calcolare il <b>costo reale</b> di ogni lotto al momento dell'import.
+          Scegli l'asta da cui proviene questo catalogo: i parametri saranno usati per calcolare il <b>costo reale</b> di ogni lotto al momento dell'import. I default sono già impostati come in ANALISI VENDITA.
         </p>
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
           <select
@@ -408,50 +464,16 @@ async function load(silent: boolean = false) {
             onChange={(e) => onAstaTypeChange(e.target.value as AstaType)}
             className="rounded border bg-white px-3 py-2 text-sm font-semibold"
           >
-            <option value="civitavecchia">Civitavecchia</option>
-            <option value="none">Nessuna formula (costo = imponibile grezzo)</option>
+            {(Object.keys(ASTA_LABELS) as AstaType[]).map((k) => (
+              <option key={k} value={k}>
+                {ASTA_LABELS[k]}
+              </option>
+            ))}
           </select>
-
-          {astaType === "civitavecchia" && (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <label className="flex items-center gap-1">
-                <span className="text-amber-900">€/cassa</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={boxCost}
-                  onChange={(e) => setBoxCost(e.target.value)}
-                  className="w-20 rounded border px-2 py-1"
-                />
-              </label>
-              <label className="flex items-center gap-1">
-                <span className="text-amber-900">€/cassa trasp.</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={transportBoxCost}
-                  onChange={(e) => setTransportBoxCost(e.target.value)}
-                  className="w-20 rounded border px-2 py-1"
-                />
-              </label>
-              <label className="flex items-center gap-1">
-                <span className="text-amber-900">% commissione</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={commissionRate}
-                  onChange={(e) => setCommissionRate(e.target.value)}
-                  className="w-20 rounded border px-2 py-1"
-                />
-              </label>
-            </div>
-          )}
         </div>
-        {astaType === "civitavecchia" && (
-          <div className="mt-2 text-xs text-amber-800">
-            Formula: <b>Costo = Imponibile + (casse × €cassa) + (casse × €trasp.) + (Imponibile × commiss.%)</b>
-          </div>
-        )}
+
+        {/* Pannello parametri dinamico — varia per asta */}
+        <AstaParamsPanel astaType={astaType} astaParams={astaParams} setParam={setParam} />
       </div>
 
       {/* ── Import da listino aste ────────────────────────── */}
@@ -722,5 +744,110 @@ async function load(silent: boolean = false) {
         })}
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Pannello parametri asta (varia per tipo)
+// I default sono identici a ANALISI VENDITA/public/aste.html
+// ─────────────────────────────────────────────────────────────────────
+
+type ParamSpec = { key: string; label: string; step?: string; suffix?: string };
+
+const PARAM_SPECS: Record<AstaType, ParamSpec[]> = {
+  civitavecchia: [
+    { key: "boxCost", label: "€/cassa", step: "0.01" },
+    { key: "transportBoxCost", label: "€/cassa trasp.", step: "0.01" },
+    { key: "commissionRate", label: "% commissione", step: "0.01", suffix: "%" },
+  ],
+  agde: [
+    { key: "ag-cassa", label: "Cassa Poly Vente €/cassa", step: "0.01" },
+    { key: "ag-cop", label: "Coperchio €/cop. (6 per pallet)", step: "0.01" },
+    { key: "ag-pal", label: "Pallet €/pal. (1 ogni 40 casse)", step: "0.10" },
+    { key: "ag-rev", label: "Redevance équipement", step: "0.01", suffix: "%" },
+    { key: "ag-tc", label: "Taxe de criée", step: "0.01", suffix: "%" },
+    { key: "ag-td", label: "Taxe vente à distance", step: "0.01", suffix: "%" },
+    { key: "ag-mul", label: "Muletto/Chariot €/kg", step: "0.0001" },
+    { key: "ag-ghi", label: "Ghiacciatura €/kg (no cefalopodi)", step: "0.01" },
+    { key: "ag-car", label: "Carta Bac €/cassa", step: "0.0001" },
+    { key: "ag-amm", label: "Spese amm. €/spedizione", step: "0.10" },
+    { key: "surcarb", label: "OLANO surcharge", step: "0.5", suffix: "%" },
+  ],
+  sete: [
+    { key: "se-rec", label: "Reconditionnement €/bac", step: "0.01" },
+    { key: "se-pal", label: "Palette 80×120 €/pallet", step: "0.10" },
+    { key: "se-gest", label: "Gestion", step: "0.01", suffix: "%" },
+    { key: "se-td", label: "Taxe Acheteur Distance", step: "0.01", suffix: "%" },
+    { key: "se-rev", label: "Redev. Équipement", step: "0.01", suffix: "%" },
+    { key: "se-frais", label: "Frais divers €/giorno", step: "0.01" },
+    { key: "surcarb", label: "OLANO surcharge", step: "0.5", suffix: "%" },
+  ],
+  tarragona: [
+    { key: "ta-cgr", label: "C.Plastic Gran €/cassa grande", step: "0.01" },
+    { key: "ta-cpe", label: "C.Plast.Petita €/cassa piccola", step: "0.01" },
+    { key: "ta-man", label: "Manipolació Porex €/cassa", step: "0.01" },
+    { key: "ta-pal", label: "Palet de Fusta €/pallet", step: "0.50" },
+    { key: "ta-etq", label: "Etiquetes €/lotto", step: "0.001" },
+    { key: "ta-rec", label: "Recollida €/cassa", step: "0.01" },
+    { key: "ta-ret", label: "Retencio Confraria", step: "0.01", suffix: "%" },
+    { key: "surcarb", label: "OLANO surcharge", step: "0.5", suffix: "%" },
+  ],
+  roses: [
+    { key: "ro-imp", label: "Impost Ports", step: "0.01", suffix: "%" },
+    { key: "ro-car", label: "Càrrec Confraria", step: "0.01", suffix: "%" },
+    { key: "ro-cai", label: "Caixes Noves €/cassa (1/lotto)", step: "0.10" },
+    { key: "surcarb", label: "OLANO surcharge", step: "0.5", suffix: "%" },
+  ],
+  none: [],
+};
+
+const FORMULA_HINT: Record<AstaType, string> = {
+  civitavecchia:
+    "Costo per lotto = Imponibile + (casse × €cassa) + (casse × €trasp.) + (Imponibile × commiss.%)",
+  agde:
+    "Aggregato sul file: criée (casse + cop + pallet + % rev/tc/td su valore + muletto×kg + ghiacciatura×kg pesce + carta bac + amm) + OLANO trasp. FR (a scaglioni) → ripartito sui lotti per peso.",
+  sete:
+    "Aggregato sul file: criée (recond + palette + % gest/td/rev su valore + frais) + OLANO trasp. FR → ripartito sui lotti per peso.",
+  tarragona:
+    "Aggregato sul file: criée (casse gran/petita 80/20 + porex + palet + etq + recollida + retencio %) + OLANO trasp. BCN → ripartito sui lotti per peso.",
+  roses:
+    "Aggregato sul file: criée (% impost + % càrrec + caixes noves×lotti) + OLANO trasp. BCN → ripartito sui lotti per peso.",
+  none: "Costo = Imponibile (Totale €) grezzo, senza maggiorazioni.",
+};
+
+function AstaParamsPanel(props: {
+  astaType: AstaType;
+  astaParams: Record<string, string>;
+  setParam: (k: string, v: string) => void;
+}) {
+  const specs = PARAM_SPECS[props.astaType] || [];
+  if (specs.length === 0) {
+    return (
+      <div className="mt-2 text-xs text-amber-800">{FORMULA_HINT[props.astaType]}</div>
+    );
+  }
+  return (
+    <>
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {specs.map((s) => (
+          <label key={s.key} className="flex items-center justify-between gap-2 rounded border bg-white px-2 py-1 text-xs">
+            <span className="text-amber-900">{s.label}</span>
+            <span className="flex items-center gap-1">
+              <input
+                type="number"
+                step={s.step ?? "0.01"}
+                value={props.astaParams[s.key] ?? ""}
+                onChange={(e) => props.setParam(s.key, e.target.value)}
+                className="w-20 rounded border px-2 py-1 text-right"
+              />
+              {s.suffix && <span className="text-amber-900">{s.suffix}</span>}
+            </span>
+          </label>
+        ))}
+      </div>
+      <div className="mt-2 text-xs text-amber-800">
+        <b>Formula:</b> {FORMULA_HINT[props.astaType]}
+      </div>
+    </>
   );
 }

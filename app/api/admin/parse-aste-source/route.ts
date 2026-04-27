@@ -276,7 +276,25 @@ function parseXlsxAcquisti(buf: Buffer): ParsedLot[] {
 // Cost calculation (per asta type)
 // ────────────────────────────────────────────────
 
-type AstaType = "civitavecchia" | "none";
+type AstaType =
+  | "civitavecchia"
+  | "agde"
+  | "sete"
+  | "tarragona"
+  | "roses"
+  | "none";
+
+const FR_AUCTIONS: AstaType[] = ["agde", "sete"];
+const BCN_AUCTIONS: AstaType[] = ["tarragona", "roses"];
+const FOREIGN_AUCTIONS: AstaType[] = [...FR_AUCTIONS, ...BCN_AUCTIONS];
+
+// Codici FAO cefalopodi (no ghiacciatura ad Agde)
+// Replica esatta del set in ANALISI VENDITA/public/aste.html
+const CEPHALO_FAO = new Set([
+  "OCC", "OCP", "OCT", "OCI", "OCM",
+  "CTL", "CTC", "SQC", "SQZ", "SQA",
+  "ILL", "PROC", "SEIC", "ENCO", "PISS",
+]);
 
 type CivitavecchiaParams = {
   boxCost: number;          // €/cassa
@@ -284,36 +302,226 @@ type CivitavecchiaParams = {
   commissionRate: number;   // % su imponibile
 };
 
-type AstaParams = CivitavecchiaParams | Record<string, never>;
+type AgdeParams = {
+  cassa: number;     // €/cassa
+  cop: number;       // €/coperchio (6 per pallet)
+  pal: number;       // €/pallet (1 ogni 40 casse)
+  rev: number;       // % redevance équipement
+  tc: number;        // % taxe de criée
+  td: number;        // % taxe vente à distance
+  mul: number;       // €/kg muletto
+  ghi: number;       // €/kg ghiacciatura (no cefalopodi)
+  car: number;       // €/cassa carta bac
+  amm: number;       // €/spedizione spese amministrative
+  surcarb: number;   // % surcharge OLANO
+};
+
+type SeteParams = {
+  rec: number;       // €/bac reconditionnement
+  pal: number;       // €/pallet
+  gest: number;      // % gestion
+  td: number;        // % taxe acheteur distance
+  rev: number;       // % redev. équipement
+  frais: number;     // €/giorno frais divers
+  surcarb: number;   // % surcharge OLANO
+};
+
+type TarrParams = {
+  cgr: number;       // €/cassa grande
+  cpe: number;       // €/cassa piccola
+  man: number;       // €/cassa manipolació porex
+  pal: number;       // €/pallet
+  etq: number;       // €/lotto etiquetes
+  rec: number;       // €/cassa recollida
+  ret: number;       // % retencio confraria
+  surcarb: number;   // % surcharge OLANO
+};
+
+type RoseParams = {
+  imp: number;       // % impost ports
+  car: number;       // % càrrec confraria
+  cai: number;       // €/cassa caixes noves (1/lotto)
+  surcarb: number;   // % surcharge OLANO
+};
+
+type AstaParams =
+  | CivitavecchiaParams
+  | AgdeParams
+  | SeteParams
+  | TarrParams
+  | RoseParams
+  | Record<string, never>;
+
+// ── OLANO transport (replica di olanoTariff in aste.html) ──
+function olanoTransport(kg: number, surcarb: number, zone: "FR" | "BCN") {
+  const s = (Number(surcarb) || 0) / 100;
+  const amm = 4.5;
+  let base = 0;
+  if (zone === "FR") {
+    if (kg <= 100) base = 90.56; // forfait fisso
+    else if (kg <= 500) base = (905.65 * kg) / 1000;
+    else if (kg <= 1000) base = (717.64 * kg) / 1000;
+    else if (kg <= 3000) base = (611.03 * kg) / 1000;
+    else base = (550.27 * kg) / 1000;
+  } else {
+    if (kg <= 100) base = 65.0;
+    else base = (654 * kg) / 1000;
+  }
+  const sur = base * s;
+  return base + sur + amm;
+}
+
+// ── Calcolo aggregato criée per i mercati esteri ──
+// Replica delle formule in aste.html → calcCriee per ogni mercato.
+function calcCrieeAggregate(
+  astaType: AstaType,
+  params: AstaParams,
+  totals: { vb: number; kg: number; nCasse: number; nLotti: number; cephaloKg: number }
+): number {
+  const { vb, kg, nCasse, nLotti, cephaloKg } = totals;
+  const pesiNonCephalo = Math.max(0, kg - cephaloKg);
+
+  switch (astaType) {
+    case "agde": {
+      const p = params as AgdeParams;
+      const nPal = Math.max(1, Math.ceil(nCasse / 40));
+      const nCop = nPal * 6;
+      return (
+        nCasse * p.cassa +
+        nCop * p.cop +
+        nPal * p.pal +
+        (vb * p.rev) / 100 +
+        (vb * p.tc) / 100 +
+        (vb * p.td) / 100 +
+        kg * p.mul +
+        pesiNonCephalo * p.ghi +
+        nCasse * p.car +
+        p.amm
+      );
+    }
+    case "sete": {
+      const p = params as SeteParams;
+      return (
+        nCasse * p.rec +
+        p.pal +
+        (vb * p.gest) / 100 +
+        (vb * p.td) / 100 +
+        (vb * p.rev) / 100 +
+        p.frais
+      );
+    }
+    case "tarragona": {
+      const p = params as TarrParams;
+      const nGr = Math.round(nCasse * 0.8);
+      const nPe = nCasse - nGr;
+      return (
+        nGr * p.cgr +
+        nPe * p.cpe +
+        nCasse * p.man +
+        p.pal +
+        nLotti * p.etq +
+        nCasse * p.rec +
+        (vb * p.ret) / 100
+      );
+    }
+    case "roses": {
+      const p = params as RoseParams;
+      const nCaiNoves = nLotti; // stima 1/lotto
+      return (
+        (vb * p.imp) / 100 +
+        (vb * p.car) / 100 +
+        nCaiNoves * p.cai
+      );
+    }
+    default:
+      return 0;
+  }
+}
 
 /**
- * Calcola il costo reale del lotto secondo la formula dell'asta scelta.
- * Civitavecchia: costo = totale + (casse × boxCost) + (casse × transportBoxCost) + (totale × commissionRate%)
- * none: costo = totale (grezzo)
- * Restituisce null se i dati minimi non sono disponibili.
+ * Calcola il costo reale per ogni lotto.
+ * - Civitavecchia: per-lotto (totale + casse×€ + casse×trasp + totale×comm%)
+ * - Estere (Agde/Sète/Tarragona/Roses): aggregato → criée e OLANO calcolati
+ *   sui totali del file, poi ripartiti sui lotti in proporzione al peso.
+ * Restituisce array allineato a lots: cost_eur[i] = costo del lotto i (o null).
  */
-function computeCost(
-  lot: ParsedLot,
+function computeCosts(
+  lots: ParsedLot[],
   astaType: AstaType,
   params: AstaParams
-): number | null {
-  if (lot.totale_eur == null || lot.totale_eur <= 0) return null;
+): (number | null)[] {
+  const out: (number | null)[] = new Array(lots.length).fill(null);
 
   if (astaType === "civitavecchia") {
     const p = params as CivitavecchiaParams;
-    const casse = lot.casse ?? 1;
-    const totale = lot.totale_eur;
     const boxCost = Number(p.boxCost) || 0;
     const transportBoxCost = Number(p.transportBoxCost) || 0;
     const commissionRate = (Number(p.commissionRate) || 0) / 100;
 
-    const extra =
-      casse * boxCost + casse * transportBoxCost + totale * commissionRate;
-    return Math.round((totale + extra) * 100) / 100;
+    for (let i = 0; i < lots.length; i++) {
+      const l = lots[i];
+      if (l.totale_eur == null || l.totale_eur <= 0) continue;
+      const casse = l.casse ?? 1;
+      const totale = l.totale_eur;
+      const extra =
+        casse * boxCost + casse * transportBoxCost + totale * commissionRate;
+      out[i] = Math.round((totale + extra) * 100) / 100;
+    }
+    return out;
   }
 
-  // Default: no extras
-  return Math.round(lot.totale_eur * 100) / 100;
+  if (astaType === "none") {
+    for (let i = 0; i < lots.length; i++) {
+      const l = lots[i];
+      if (l.totale_eur != null && l.totale_eur > 0) {
+        out[i] = Math.round(l.totale_eur * 100) / 100;
+      }
+    }
+    return out;
+  }
+
+  if (FOREIGN_AUCTIONS.includes(astaType)) {
+    // ── Aggregato del file ──
+    let vb = 0; // valore battuto totale (sum totale_eur)
+    let kg = 0;
+    let nCasse = 0;
+    let nLotti = 0;
+    let cephaloKg = 0;
+
+    for (const l of lots) {
+      if (l.totale_eur == null || l.totale_eur <= 0) continue;
+      vb += l.totale_eur;
+      kg += l.peso_interno_kg;
+      nCasse += l.casse ?? 1;
+      nLotti += 1;
+      // Per i cefalopodi, controlla se il nome specie matcha un FAO noto
+      // (heuristica: confronta uppercase con CEPHALO_FAO)
+      const sp = (l.specie || "").toUpperCase().trim();
+      if (CEPHALO_FAO.has(sp)) cephaloKg += l.peso_interno_kg;
+    }
+
+    if (nLotti === 0 || kg === 0) return out;
+
+    const crieeTot = calcCrieeAggregate(astaType, params, {
+      vb, kg, nCasse, nLotti, cephaloKg,
+    });
+
+    const zone = FR_AUCTIONS.includes(astaType) ? "FR" : "BCN";
+    const surcarb = (params as any).surcarb ?? 31;
+    const olanoTot = olanoTransport(kg, surcarb, zone);
+
+    // ── Ripartizione per peso sui singoli lotti ──
+    for (let i = 0; i < lots.length; i++) {
+      const l = lots[i];
+      if (l.totale_eur == null || l.totale_eur <= 0) continue;
+      const share = l.peso_interno_kg / kg;
+      const costo = l.totale_eur + share * crieeTot + share * olanoTot;
+      out[i] = Math.round(costo * 100) / 100;
+    }
+    return out;
+  }
+
+  return out;
 }
 
 // ────────────────────────────────────────────────
@@ -333,18 +541,69 @@ export async function POST(req: Request) {
 
     // Parametri asta (opzionali — se assenti il costo viene salvato senza maggiorazioni)
     const astaTypeRaw = (form.get("astaType") as string | null)?.trim().toLowerCase() || "";
-    const astaType: AstaType = astaTypeRaw === "civitavecchia" ? "civitavecchia" : "none";
+    const validAstaTypes: AstaType[] = [
+      "civitavecchia", "agde", "sete", "tarragona", "roses", "none",
+    ];
+    const astaType: AstaType = (validAstaTypes as string[]).includes(astaTypeRaw)
+      ? (astaTypeRaw as AstaType)
+      : "none";
 
-    const astaParams: AstaParams =
-      astaType === "civitavecchia"
-        ? {
-            boxCost: parseFloat((form.get("boxCost") as string | null) || "1") || 0,
-            transportBoxCost:
-              parseFloat((form.get("transportBoxCost") as string | null) || "2") || 0,
-            commissionRate:
-              parseFloat((form.get("commissionRate") as string | null) || "2") || 0,
-          }
-        : {};
+    // Helper: legge un parametro numerico dal form con default
+    const np = (key: string, def: number): number => {
+      const v = parseFloat((form.get(key) as string | null) || String(def));
+      return Number.isFinite(v) ? v : def;
+    };
+
+    let astaParams: AstaParams = {};
+    if (astaType === "civitavecchia") {
+      astaParams = {
+        boxCost: np("boxCost", 1),
+        transportBoxCost: np("transportBoxCost", 2),
+        commissionRate: np("commissionRate", 2),
+      } as CivitavecchiaParams;
+    } else if (astaType === "agde") {
+      astaParams = {
+        cassa: np("ag-cassa", 1.0),
+        cop: np("ag-cop", 0.7),
+        pal: np("ag-pal", 5.0),
+        rev: np("ag-rev", 2.0),
+        tc: np("ag-tc", 2.0),
+        td: np("ag-td", 2.5),
+        mul: np("ag-mul", 0.0141),
+        ghi: np("ag-ghi", 0.1),
+        car: np("ag-car", 0.0714),
+        amm: np("ag-amm", 4.5),
+        surcarb: np("surcarb", 31),
+      } as AgdeParams;
+    } else if (astaType === "sete") {
+      astaParams = {
+        rec: np("se-rec", 1.54),
+        pal: np("se-pal", 3.6),
+        gest: np("se-gest", 1.5),
+        td: np("se-td", 2.0),
+        rev: np("se-rev", 2.0),
+        frais: np("se-frais", 1.81),
+        surcarb: np("surcarb", 31),
+      } as SeteParams;
+    } else if (astaType === "tarragona") {
+      astaParams = {
+        cgr: np("ta-cgr", 0.5),
+        cpe: np("ta-cpe", 0.5),
+        man: np("ta-man", 1.9),
+        pal: np("ta-pal", 6.0),
+        etq: np("ta-etq", 0.015),
+        rec: np("ta-rec", 0.16),
+        ret: np("ta-ret", 4.0),
+        surcarb: np("surcarb", 31),
+      } as TarrParams;
+    } else if (astaType === "roses") {
+      astaParams = {
+        imp: np("ro-imp", 2.0),
+        car: np("ro-car", 2.1),
+        cai: np("ro-cai", 6.5),
+        surcarb: np("surcarb", 31),
+      } as RoseParams;
+    }
 
     if (!catalogId) return NextResponse.json({ error: "catalogId mancante" }, { status: 400 });
     if (!file) return NextResponse.json({ error: "file mancante" }, { status: 400 });
@@ -423,6 +682,9 @@ export async function POST(req: Request) {
     const matched: MatchedRow[] = [];
     const unmatched: { lotRowIndex: number; reason: string }[] = [];
 
+    // Costi calcolati su tutto il file (per le estere è un calcolo aggregato + ripartizione)
+    const costs = computeCosts(lots, astaType, astaParams);
+
     for (let i = 0; i < lots.length; i++) {
       const prodIdx = startIdx + i;
       if (prodIdx >= allProds.length) {
@@ -430,7 +692,6 @@ export async function POST(req: Request) {
         continue;
       }
       const prod = allProds[prodIdx];
-      const cost = computeCost(lots[i], astaType, astaParams);
       matched.push({
         lotRowIndex: lots[i].rowIndex,
         numero_interno_cassa: lots[i].numero_interno_cassa,
@@ -439,7 +700,7 @@ export async function POST(req: Request) {
         prezzo_eur_kg: lots[i].prezzo_eur_kg,
         totale_eur: lots[i].totale_eur,
         casse: lots[i].casse,
-        cost_eur: cost,
+        cost_eur: costs[i] ?? null,
         progressive_number: prod.progressive_number,
         productId: prod.id,
       });
