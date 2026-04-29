@@ -232,7 +232,15 @@ export async function GET(req: Request) {
         xText,
         y + 30
       );
-      doc.text(`Prezzo: ${eur(r.price)}`, xText, y + 46);
+      doc.text(
+        `Prezzo: ${
+          r.price !== null && r.price !== undefined && Number.isFinite(Number(r.price))
+            ? `${eur(r.price)} /Kg`
+            : "—"
+        }`,
+        xText,
+        y + 46
+      );
       doc.fillColor("black");
 
       doc.strokeColor("#e5e5e5").lineWidth(1);

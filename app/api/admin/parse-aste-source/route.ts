@@ -12,6 +12,7 @@ export const runtime = "nodejs";
 type ParsedLot = {
   numero_interno_cassa: string | null; // cooperative lot number (may be null for XLSX without it)
   specie: string | null;
+  fao: string | null; // codice FAO specie (es. "OCC", "MUR") — disponibile per XLSX esteri
   peso_interno_kg: number;
   // Campi costo (opzionali — disponibili dal PDF e dall'XLSX se contiene le colonne)
   prezzo_eur_kg: number | null;
@@ -135,6 +136,7 @@ async function parsePdf(buf: Buffer): Promise<ParsedLot[]> {
     lots.push({
       numero_interno_cassa: coopNum,
       specie,
+      fao: null, // PDF Civitavecchia non ha colonna FAO esplicita
       peso_interno_kg: Math.round(peso * 100) / 100,
       prezzo_eur_kg: Number.isFinite(prezzo) && prezzo > 0 ? Math.round(prezzo * 10000) / 10000 : null,
       totale_eur: Number.isFinite(totale) && totale > 0 ? Math.round(totale * 100) / 100 : null,
@@ -186,9 +188,14 @@ function parseXlsxAcquisti(buf: Buffer): ParsedLot[] {
     };
 
     // Colonne note/probabili
+    // Note: per "casse" cerchiamo "casse" e "scatol" — il file Agde ha
+    // colonna "Scatole" (numero scatole = numero casse).
     const idxPrezzo = findCol("prezzo", "€/kg", "eur/kg", "prz");
     const idxTotale = findCol("totale", "importo", "valore");
-    const idxCasse = findCol("casse", "n.casse", "n. casse", "n_casse", "casse n");
+    const idxCasse = findCol("casse", "scatol", "n.casse", "n. casse", "n_casse", "casse n");
+    // FAO specie: cerca header "fao specie" (o "fao") — nei file Agde è col 5
+    // (header esatto "FAO specie").
+    const idxFao = findCol("fao specie", "cod fao", "codice fao");
 
     // Skip header row (row 0)
     for (let i = 1; i < rows.length; i++) {
@@ -204,6 +211,13 @@ function parseXlsxAcquisti(buf: Buffer): ParsedLot[] {
 
       if (!Number.isFinite(peso) || peso <= 0) continue;
 
+      // FAO specie (per detection cefalopodi a Agde)
+      const faoRaw = idxFao >= 0 ? r[idxFao] : r[5];
+      const fao =
+        faoRaw != null && String(faoRaw).trim() !== ""
+          ? String(faoRaw).trim().toUpperCase()
+          : null;
+
       // Campi costo (opzionali)
       const prezzoRaw = idxPrezzo >= 0 ? r[idxPrezzo] : null;
       const totaleRaw = idxTotale >= 0 ? r[idxTotale] : null;
@@ -216,6 +230,7 @@ function parseXlsxAcquisti(buf: Buffer): ParsedLot[] {
       lots.push({
         numero_interno_cassa: coopNum,
         specie,
+        fao,
         peso_interno_kg: Math.round(peso * 100) / 100,
         prezzo_eur_kg: Number.isFinite(prezzo) && prezzo > 0 ? Math.round(prezzo * 10000) / 10000 : null,
         totale_eur: Number.isFinite(totale) && totale > 0 ? Math.round(totale * 100) / 100 : null,
@@ -259,6 +274,7 @@ function parseXlsxAcquisti(buf: Buffer): ParsedLot[] {
         lots.push({
           numero_interno_cassa: null, // pivot format has no coop number
           specie: currentSpecie,
+          fao: null,
           peso_interno_kg: Math.round(peso * 100) / 100,
           prezzo_eur_kg: Number.isFinite(prezzo) && prezzo > 0 ? Math.round(prezzo * 10000) / 10000 : null,
           totale_eur: totale,
@@ -494,10 +510,23 @@ function computeCosts(
       kg += l.peso_interno_kg;
       nCasse += l.casse ?? 1;
       nLotti += 1;
-      // Per i cefalopodi, controlla se il nome specie matcha un FAO noto
-      // (heuristica: confronta uppercase con CEPHALO_FAO)
-      const sp = (l.specie || "").toUpperCase().trim();
-      if (CEPHALO_FAO.has(sp)) cephaloKg += l.peso_interno_kg;
+      // Cefalopodi: identificati dal codice FAO (es. OCC, OCT, CTL, SQC...)
+      // Fallback su nome italiano se FAO mancante (PDF Civitavecchia).
+      const fao = (l.fao || "").toUpperCase().trim();
+      if (fao && CEPHALO_FAO.has(fao)) {
+        cephaloKg += l.peso_interno_kg;
+        continue;
+      }
+      const sp = (l.specie || "").toLowerCase().trim();
+      if (
+        sp.includes("polpo") ||
+        sp.includes("seppia") ||
+        sp.includes("calamar") ||
+        sp.includes("totano") ||
+        sp.includes("moscardin")
+      ) {
+        cephaloKg += l.peso_interno_kg;
+      }
     }
 
     if (nLotti === 0 || kg === 0) return out;

@@ -133,7 +133,7 @@ export async function GET(req: Request) {
     const thumb = 70;
     const checkboxSize = 14;
 
-    let total = 0;
+    // Nessun totale: il valore finale viene calcolato in fattura.
 
     for (const r of rows) {
       if (doc.y + lineH > doc.page.height - doc.page.margins.bottom - 20) {
@@ -176,10 +176,10 @@ export async function GET(req: Request) {
       doc.text(`Qtà: ${r.qty}` + pesoIntTxt + pesoPubTxt + provTxt, xText, y + 30);
 
       const price = r.price === null || r.price === undefined ? null : Number(r.price);
-      doc.text(`Prezzo: ${eur(price)}`, xText, y + 46);
+      const prezzoTxt =
+        price !== null && Number.isFinite(price) ? `${eur(price)} /Kg` : "—";
+      doc.text(`Prezzo: ${prezzoTxt}`, xText, y + 46);
       doc.fillColor("black");
-
-      if (price !== null && Number.isFinite(price)) total += price * r.qty;
 
       doc.strokeColor("#e5e5e5").lineWidth(1);
       doc.moveTo(left, y + lineH).lineTo(left + usableW, y + lineH).stroke();

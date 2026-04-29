@@ -70,10 +70,13 @@ export async function POST(req: Request) {
 
       const box = p?.box_number ?? "?";
       const prog = p?.progressive_number ?? "?";
-      lines.push(`• Cassa ${box} (Prog ${prog}) — ${eur(price)} × ${qty}`);
+      const priceTxt = price !== null && Number.isFinite(price) ? `${eur(price)} /Kg` : "—";
+      lines.push(`• Cassa ${box} (Prog ${prog}) — ${priceTxt}${qty > 1 ? ` × ${qty}` : ""}`);
     }
 
     const brand = process.env.BRAND_NAME || "F.lli D'Andrassi";
+    // Nessun totale: il valore finale viene calcolato in fattura in base al
+    // peso effettivo alla consegna (i prezzi sono €/Kg, non totali).
     const waText =
       `🔁 *${brand}* — Reinoltro ordine\n` +
       `🕒 ${nowIT()}\n` +
@@ -81,7 +84,6 @@ export async function POST(req: Request) {
       `📞 Tel: ${customerPhone}\n` +
       `🧾 Ordine: ${String(orderId).slice(0, 8)}…\n\n` +
       `📦 *Casse:*\n${lines.join("\n")}\n\n` +
-      `💶 *Totale:* € ${total.toFixed(2)}\n` +
       (pdfPublicUrl ? `📄 PDF in allegato\n` : `📄 PDF: non disponibile\n`);
 
     // 4) Invia WhatsApp con fallback

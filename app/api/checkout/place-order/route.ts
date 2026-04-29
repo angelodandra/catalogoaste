@@ -254,10 +254,13 @@ reservedOk = true;
       const prog = p?.progressive_number ?? "?";
       const w = p?.weight_kg === null || p?.weight_kg === undefined ? null : Number(p.weight_kg);
       const wTxt = w !== null && Number.isFinite(w) ? ` ≈ ${w.toFixed(2)} kg` : "";
-      lines.push(`• Cassa ${box} (Prog ${prog})${wTxt} — ${eur(price)} × ${qty}`);
+      const priceTxt = price !== null && Number.isFinite(price) ? `${eur(price)} /Kg` : "—";
+      lines.push(`• Cassa ${box} (Prog ${prog})${wTxt} — ${priceTxt}${qty > 1 ? ` × ${qty}` : ""}`);
     }
 
     const brand = process.env.BRAND_NAME || "F.lli D'Andrassi";
+    // Nessun totale: il valore finale viene calcolato in fattura in base al
+    // peso effettivo alla consegna (i prezzi sono €/Kg, non totali).
     const waText =
       `✅ *${brand}* — Ordine ricevuto\n` +
       `🕒 ${nowIT()}\n` +
@@ -265,7 +268,6 @@ reservedOk = true;
       `📞 Tel: ${customerPhoneN}\n` +
       `🧾 Ordine: ${String(order.id).slice(0, 8)}…\n\n` +
       `📦 *Casse:*\n${lines.join("\n")}\n\n` +
-      `💶 *Totale:* € ${total.toFixed(2)}\n` +
       (pdfPublicUrl ? `📄 PDF: ${pdfLink}\n` : `📄 PDF: non disponibile\n`);
 
     __waDebug.step = "before_whatsapp";
@@ -303,8 +305,6 @@ reservedOk = true;
         `🕒 ${nowIT()}
 ` +
         `👤 Cliente: ${customerName}
-` +
-        `💶 Totale: € ${total.toFixed(2)}
 ` +
         (pdfPublicUrl ? `📄 PDF: ${pdfLink}
 ` : ``);

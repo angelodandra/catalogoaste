@@ -262,7 +262,8 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
           <div className="mt-3 rounded-2xl border bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold">Riepilogo</div>
-              <div className="text-sm font-bold">Totale: € {total.toFixed(2)}</div>
+              {/* Nessun totale: il valore finale viene calcolato in fattura
+                  in base al peso effettivo alla consegna. */}
             </div>
 
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -285,7 +286,7 @@ export default function CheckoutPage(props: { params: Promise<{ catalogId: strin
                         <div className="mt-1 text-sm">
                           Prezzo:{" "}
                           {it.product.price_eur !== null && it.product.price_eur !== undefined
-                            ? `€ ${Number(it.product.price_eur).toFixed(2)}`
+                            ? `€ ${Number(it.product.price_eur).toFixed(2)} /Kg`
                             : "—"}
                         </div>
                         <div className="mt-1 text-sm">

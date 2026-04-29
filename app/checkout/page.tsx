@@ -149,7 +149,7 @@ export default function CheckoutPage() {
                 <div className="font-bold">
                   Prog {it.product.progressive_number}
                 </div>
-                <div>Prezzo: € {Number(it.product.price_eur || 0).toFixed(2)}</div>
+                <div>Prezzo: € {Number(it.product.price_eur || 0).toFixed(2)} /Kg</div>
                 <div>Qtà: {it.qty}</div>
               </div>
             </div>

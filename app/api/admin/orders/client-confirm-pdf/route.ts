@@ -167,7 +167,7 @@ export async function GET(req: Request) {
     // Ordina per numero cassa
     allRows.sort((a, b) => Number(a.box_number) - Number(b.box_number));
 
-    let totalEur = 0;
+    // (totale rimosso: il valore finale viene calcolato in fattura)
 
     for (const r of allRows) {
       const imgUrl = r.image_path ? `${supabaseBase}/storage/v1/object/public/catalog-images/${r.image_path}` : "";
@@ -185,8 +185,11 @@ export async function GET(req: Request) {
       const peso = r.weight_kg !== null && r.weight_kg !== undefined
         ? `${Number(r.weight_kg).toFixed(2)} kg`
         : "—";
+      const prezzoTxt = r.price_eur !== null && r.price_eur !== undefined
+        ? `${eur(r.price_eur)} /Kg`
+        : "—";
       doc.font("Helvetica-Bold").fontSize(11).fillColor("black").text(
-        `Prog: ${r.progressive_number}   |   Cassa: ${r.box_number}   |   Peso: ${peso}   |   Prezzo: ${eur(r.price_eur)}`,
+        `Prog: ${r.progressive_number}   |   Cassa: ${r.box_number}   |   Peso: ${peso}   |   Prezzo: ${prezzoTxt}`,
         xText,
         yStart
       );
@@ -199,10 +202,6 @@ export async function GET(req: Request) {
       );
       doc.fillColor("black");
 
-      if (r.price_eur !== null && Number.isFinite(Number(r.price_eur))) {
-        totalEur += Number(r.price_eur) * r.qty;
-      }
-
       doc.y = yStart + 80;
       doc.moveTo(left, doc.y - 4).lineTo(left + usableW, doc.y - 4).strokeColor("#e5e5e5").lineWidth(1).stroke();
       doc.strokeColor("#000").lineWidth(1);
@@ -210,11 +209,8 @@ export async function GET(req: Request) {
       if (doc.y > 720) doc.addPage();
     }
 
-    // ── Totale ────────────────────────────────────────────────────────────
-    if (totalEur > 0) {
-      doc.moveDown(0.5);
-      doc.font("Helvetica-Bold").fontSize(13).text(`Totale: ${eur(totalEur)}`, { align: "right" });
-    }
+    // Nessun totale: il valore finale viene calcolato in fattura in base al
+    // peso effettivo alla consegna (i prezzi mostrati sono €/Kg, non totali).
 
     doc.moveDown(1);
     doc.font("Helvetica").fontSize(9).fillColor("gray").text("Documento generato automaticamente.", { align: "center" });
