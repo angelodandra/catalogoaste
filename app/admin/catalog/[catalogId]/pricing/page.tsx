@@ -313,12 +313,17 @@ async function load(silent: boolean = false) {
    * non un totale per cassa. Il totale che paga il cliente per quel
    * prodotto = prezzo €/Kg × peso pubblicato (kg).
    *
-   * - Costo €/Kg = cost_eur (totale lotto) / peso pubblicato
-   *   (così è direttamente confrontabile col prezzo di vendita €/Kg)
-   *   Fallback su peso interno se peso pubblicato non c'è.
+   * - **Costo €/Kg = cost_eur (totale lotto) / peso INTERNO** (peso reale
+   *   del pesce). Così il costo €/Kg è > prezzo asta come ci si aspetta
+   *   (il prezzo asta + le spese ripartite). Fallback su peso pubblicato
+   *   solo se peso interno non c'è.
+   * - **Break-even vendita = cost_eur / peso pubblicato**: è il prezzo
+   *   €/Kg minimo a cui vendere al cliente per pareggiare (mostrato come
+   *   info accanto al costo, perché peso pub > peso interno).
    * - Prezzo di vendita €/Kg = quello inserito.
-   * - Ricavo totale = prezzo €/Kg × peso pub
-   * - Ricarico % = (ricavo totale - cost_eur) / cost_eur × 100
+   * - Ricavo totale = prezzo €/Kg × peso pub.
+   * - Ricarico % = (ricavo totale - cost_eur) / cost_eur × 100  (sui totali,
+   *   matematicamente corretto anche se peso pub ≠ peso interno).
    */
   function computeRow(
     priceStr: string,
@@ -330,15 +335,23 @@ async function load(silent: boolean = false) {
     const weightPub = wv === "" ? null : Number(wv);
     const validWeightPub =
       weightPub != null && Number.isFinite(weightPub) && weightPub > 0;
-    const refKg = validWeightPub
-      ? weightPub!
-      : pesoInternoKg && pesoInternoKg > 0
-      ? pesoInternoKg
-      : null;
+    const validInterno = pesoInternoKg != null && pesoInternoKg > 0;
 
+    // Costo €/Kg sul peso INTERNO (vero costo netto del pesce)
     const costPerKg =
-      costTot != null && costTot > 0 && refKg != null
-        ? Math.round((costTot / refKg) * 100) / 100
+      costTot != null && costTot > 0
+        ? validInterno
+          ? Math.round((costTot / pesoInternoKg!) * 100) / 100
+          : validWeightPub
+          ? Math.round((costTot / weightPub!) * 100) / 100
+          : null
+        : null;
+
+    // Break-even €/Kg di vendita (cost / peso pub) — utile come riferimento
+    // se peso pub > peso interno (es. ghiaccio +0.2 kg).
+    const breakevenPerKg =
+      costTot != null && costTot > 0 && validWeightPub
+        ? Math.round((costTot / weightPub!) * 100) / 100
         : null;
 
     const pv = (priceStr ?? "").trim().replace(",", ".");
@@ -348,10 +361,17 @@ async function load(silent: boolean = false) {
     // pricePerKg = quello inserito (è già €/Kg)
     const pricePerKg = validPrice ? Math.round(price! * 100) / 100 : null;
 
-    // Ricavo totale per il prodotto = €/Kg × peso pubblicato (o peso interno fallback)
+    // Peso usato per il ricavo: peso pub se presente, sennò peso interno
+    const refKgForRevenue = validWeightPub
+      ? weightPub!
+      : validInterno
+      ? pesoInternoKg!
+      : null;
+
+    // Ricavo totale per il prodotto = €/Kg × peso pubblicato (quello che paga il cliente)
     const revenueTot =
-      validPrice && refKg != null
-        ? Math.round(price! * refKg * 100) / 100
+      validPrice && refKgForRevenue != null
+        ? Math.round(price! * refKgForRevenue * 100) / 100
         : null;
 
     let marginValue: number | null = null;
@@ -361,7 +381,7 @@ async function load(silent: boolean = false) {
       marginPct = Math.round(((revenueTot - costTot) / costTot) * 1000) / 10;
     }
 
-    return { costPerKg, pricePerKg, revenueTot, marginValue, marginPct };
+    return { costPerKg, breakevenPerKg, pricePerKg, revenueTot, marginValue, marginPct };
   }
 
   async function saveAll() {
@@ -703,7 +723,7 @@ async function load(silent: boolean = false) {
               {/* ── Costo €/Kg + Ricarico % (sotto il prezzo di vendita) ─── */}
               {r.cost_eur != null ? (
                 <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs">
-                  {/* Riga 1: COSTO — primario in €/Kg, secondario totali */}
+                  {/* Riga 1: COSTO €/Kg sul peso INTERNO (vero costo del pesce) */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-gray-700">
                       Costo:{" "}
@@ -722,6 +742,14 @@ async function load(silent: boolean = false) {
                       </span>
                     </div>
                   </div>
+                  {/* Break-even di vendita se peso pub ≠ peso interno (es. ghiaccio) */}
+                  {calc.breakevenPerKg != null &&
+                    calc.costPerKg != null &&
+                    Math.abs(calc.breakevenPerKg - calc.costPerKg) >= 0.05 && (
+                      <div className="text-[11px] text-gray-500">
+                        Pareggio vendita (su peso pub): <b>{calc.breakevenPerKg.toFixed(2)} €/Kg</b>
+                      </div>
+                    )}
 
                   {/* Riga 2: VENDITA €/Kg + totale ricavo + ricarico % colorato */}
                   <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
