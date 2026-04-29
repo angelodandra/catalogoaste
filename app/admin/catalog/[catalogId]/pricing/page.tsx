@@ -697,30 +697,24 @@ async function load(silent: boolean = false) {
                 />
               </div>
 
-              {/* ── Costo €/Kg + Ricarico % (sotto il prezzo di vendita) ─── */}
+              {/* ── Costi sintetici + Ricarico (sotto il prezzo di vendita) ─── */}
               {r.cost_eur != null ? (
                 <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs">
-                  {/* Riga 1: COSTO €/Kg sul peso INTERNO (vero costo del pesce) */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-gray-700">
-                      Costo:{" "}
+                  {r.auction_price_per_kg != null && (
+                    <div className="text-gray-600">
+                      Costo netto asta:{" "}
                       <b className="text-gray-900">
-                        {calc.costPerKg != null
-                          ? `${calc.costPerKg.toFixed(2)} €/Kg`
-                          : `${Number(r.cost_eur).toFixed(2)} €`}
+                        {Number(r.auction_price_per_kg).toFixed(2)} €/Kg
                       </b>
-                      <span className="ml-1 text-gray-400">
-                        ({Number(r.cost_eur).toFixed(2)} € tot
-                        {r.auction_boxes_count ? ` · ${r.auction_boxes_count} casse` : ""}
-                        {r.auction_price_per_kg != null
-                          ? ` · asta ${Number(r.auction_price_per_kg).toFixed(2)} €/Kg`
-                          : ""}
-                        )
-                      </span>
                     </div>
-                  </div>
+                  )}
+                  {calc.costPerKg != null && (
+                    <div className="text-gray-600">
+                      Costo lordo (con spese):{" "}
+                      <b className="text-gray-900">{calc.costPerKg.toFixed(2)} €/Kg</b>
+                    </div>
+                  )}
 
-                  {/* Riga 2: VENDITA €/Kg + totale ricavo + ricarico % colorato */}
                   <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
                     <div className="text-gray-700">
                       Vendita:{" "}
@@ -729,11 +723,6 @@ async function load(silent: boolean = false) {
                           ? `${calc.pricePerKg.toFixed(2)} €/Kg`
                           : "—"}
                       </b>
-                      {calc.revenueTot != null && (
-                        <span className="ml-1 text-gray-400">
-                          ({calc.revenueTot.toFixed(2)} € tot)
-                        </span>
-                      )}
                     </div>
                     {calc.marginPct != null ? (
                       <div className={`rounded px-2 py-0.5 font-bold ${markupColor}`}>
